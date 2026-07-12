@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#1565C0" />
+    <title>鮮魚原価・入荷管理</title>
+    <link rel="manifest" href="manifest.json" />
+    <link rel="icon" href="assets/icons/favicon.ico" type="image/x-icon" sizes="32x32" />
+    <link rel="icon" href="assets/icons/icon-192.png" type="image/png" sizes="192x192" />
+    <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <div id="toastMessage" class="toast-message" role="status" aria-live="polite"></div>
+      <header class="topbar">
+        <div class="brand">
+          <div>
+            <h1>鮮魚原価・入荷管理</h1>
+            <p>入荷情報の登録・一覧・印刷をまとめて管理できます。</p>
+          </div>
+        </div>
+
+        <nav class="tabs" aria-label="タブ切替">
+          <button type="button" class="tab is-active" data-tab="home">ホーム</button>
+          <button type="button" class="tab" data-tab="register">新規登録</button>
+          <button type="button" class="tab" data-tab="list">一覧</button>
+          <button type="button" class="tab" data-tab="print">印刷</button>
+        </nav>
+      </header>
+
+      <main class="panels">
+        <section class="panel is-active" data-panel="home">
+          <div class="home-card card">
+            <h2>鮮魚原価・入荷管理</h2>
+            <p>利用する機能を選択してください。</p>
+            <div class="home-actions">
+              <button type="button" class="home-action" data-tab="register"><span>＋</span>新規登録</button>
+              <button type="button" class="home-action" data-tab="list"><span>☷</span>一覧</button>
+              <button type="button" class="home-action" data-tab="print"><span>▣</span>印刷</button>
+            </div>
+            <div class="install-area">
+              <button type="button" class="secondary-button" id="installButton" hidden>ホーム画面に追加</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel" data-panel="register">
+          <div class="card">
+            <div class="form-layout">
+              <section>
+                <h2 id="formHeading">新規登録</h2>
+                <form id="recordForm">
+                  <div class="form-grid">
+                    <div class="field">
+                      <label for="origin">産地</label>
+                      <input id="origin" name="origin" type="text" placeholder="例：宮城県" />
+                    </div>
+
+                    <div class="field">
+                      <label for="productName">品名</label>
+                      <input id="productName" name="productName" type="text" placeholder="例：ブリ" />
+                    </div>
+
+                    <div class="field">
+                      <label for="standard">規格</label>
+                      <select id="standard" name="standard">
+                        <option value="尾">尾</option>
+                        <option value="c/s">c/s</option>
+                        <option value="kg">kg</option>
+                        <option value="P">P</option>
+                      </select>
+                    </div>
+
+                    <div class="field">
+                      <label for="cost">原価</label>
+                      <input id="cost" name="cost" type="number" min="0" step="0.01" placeholder="例：420" />
+                    </div>
+
+                    <div class="field full">
+                      <span class="label">原価区分</span>
+                      <div class="inline-options">
+                        <label class="option-pill">
+                          <input type="radio" name="costType" value="kg" checked />
+                          <span>kg原価</span>
+                        </label>
+                        <label class="option-pill">
+                          <input type="radio" name="costType" value="case" />
+                          <span>ケース原価</span>
+                        </label>
+                      </div>
+                    </div>
+
+                    <div class="field is-hidden" id="kgCountWrap">
+                      <label for="kgCount">kg数</label>
+                      <input id="kgCount" name="kgCount" type="number" min="0" step="0.01" placeholder="例：12" />
+                    </div>
+
+                    <div class="field" id="tailCountWrap">
+                      <label for="tailCount">尾数</label>
+                      <input id="tailCount" name="tailCount" type="number" min="0" step="1" placeholder="例：10" />
+                    </div>
+
+                    <div class="field">
+                      <label for="arrivalDate">入荷日</label>
+                      <input id="arrivalDate" name="arrivalDate" type="date" />
+                    </div>
+
+                    <div class="field full">
+                      <span class="label">優先度</span>
+                      <div class="priority-options">
+                        <label class="option-pill">
+                          <input type="radio" name="priority" value="high" />
+                          <span class="priority-choice priority-red">▲ 高</span>
+                        </label>
+                        <label class="option-pill">
+                          <input type="radio" name="priority" value="medium" />
+                          <span class="priority-choice priority-yellow">■ 中</span>
+                        </label>
+                        <label class="option-pill">
+                          <input type="radio" name="priority" value="low" checked />
+                          <span class="priority-choice priority-blue">● 低</span>
+                        </label>
+                      </div>
+                    </div>
+
+                    <div class="field full">
+                      <label for="comment">コメント</label>
+                      <textarea id="comment" name="comment" placeholder="備考や注意点を入力"></textarea>
+                    </div>
+                  </div>
+
+                  <div class="form-actions">
+                    <button type="button" class="secondary-button" id="resetButton">リセット</button>
+                    <button type="button" class="secondary-button" id="copyLastButton">前回コピー</button>
+                    <button type="submit" class="primary-button" id="submitButton">登録</button>
+                  </div>
+                </form>
+              </section>
+
+              <aside>
+                <div class="summary-grid">
+                  <div class="summary-card">
+                    <span>ケース原価</span>
+                    <strong id="summaryExpenseCost">—</strong>
+                  </div>
+                  <div class="summary-card">
+                    <span>経費込みケース原価</span>
+                    <strong id="summaryCaseCost">—</strong>
+                  </div>
+                  <div class="summary-card">
+                    <span>1尾原価</span>
+                    <strong id="summaryOneFishCost">—</strong>
+                  </div>
+                </div>
+                <p id="saveMessage" class="save-message">入力途中は自動保存されます。</p>
+              </aside>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel" data-panel="list">
+          <div class="card">
+            <div class="list-header">
+              <h2>登録一覧</h2>
+              <button type="button" class="secondary-button" id="csvDownloadButton">CSVダウンロード</button>
+            </div>
+            <div id="recordList" class="list-grid"></div>
+          </div>
+        </section>
+
+        <section class="panel" data-panel="print">
+          <div class="card">
+            <div class="print-preview">
+              <div id="printPreview"></div>
+            </div>
+            <div class="form-actions">
+              <button type="button" class="print-button" id="printButton">一覧印刷</button>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="config.js"></script>
+    <script src="calc.js"></script>
+    <script src="database.js"></script>
+    <script src="print.js"></script>
+    <script src="app.js"></script>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('./service-worker.js').catch((error) => {
+            console.error('Service Worker の登録に失敗しました。', error);
+          });
+        });
+      }
+    </script>
+  </body>
+</html>
