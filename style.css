@@ -160,15 +160,84 @@ button, input, select, textarea { font: inherit; }
 }
 
 @media print {
-  @page { size: A4 landscape; margin: 10mm; }
+  @page {
+    size: A4 portrait;
+    margin: 10mm 8mm;
+  }
+
   body { background: #fff; }
   .topbar, .tabs, .panel:not(.is-active), .form-actions, .print-button, .save-message, .toast-message { display: none !important; }
   .app-shell { max-width: none; padding: 0; }
   .card, .print-preview { padding: 0; border: 0; box-shadow: none; }
   .print-preview { overflow: visible; }
-  .print-table { table-layout: auto; font-size: 7.5pt; white-space: normal; }
-  .print-table th, .print-table td { padding: 3px; border-color: #444; background: #fff !important; color: #000 !important; }
-  .print-priority { color: #000 !important; }
-  .print-footer { position: fixed; right: 0; bottom: 0; left: 0; display: flex; justify-content: flex-end; gap: 8px; color: #000; font-size: 8pt; }
+  .print-header { display: none !important; }
+  .print-sheet { width: 100%; }
+  .print-title-grid {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    align-items: center;
+    gap: 8mm;
+  }
+  .print-title-row th,
+  .print-column-row th,
+  .print-table tbody td {
+    border: 1px solid #111;
+    background: transparent !important;
+    color: #000 !important;
+  }
+  .print-title-row th {
+    padding: 3px 4px;
+    text-align: left;
+    font-size: 12pt;
+    font-weight: 700;
+  }
+  .print-title-text,
+  .print-title-date,
+  .print-title-page {
+    white-space: nowrap;
+  }
+  .print-title-date,
+  .print-title-page {
+    font-size: 11pt;
+    font-weight: 700;
+  }
+  .print-table {
+    table-layout: fixed;
+    width: 100%;
+    font-size: 11pt;
+    white-space: normal;
+    border-collapse: collapse;
+    background: transparent !important;
+  }
+  thead { display: table-header-group; }
+  .print-column-row th {
+    padding: 4px 3px;
+    font-size: 11pt;
+    font-weight: 700;
+    text-align: center;
+    vertical-align: middle;
+    line-height: 1.1;
+  }
+  .print-table tbody td {
+    padding: 3px 4px;
+    text-align: left;
+    vertical-align: middle;
+    line-height: 1.15;
+    height: 32px;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+  }
+  .print-table tbody tr {
+    height: 32px;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  .print-priority {
+    text-align: center !important;
+    font-weight: 700 !important;
+    color: #000 !important;
+    white-space: nowrap;
+  }
+  .print-footer { display: none !important; }
   .page-number::after { content: counter(page); }
 }

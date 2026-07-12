@@ -37,14 +37,48 @@
     if (!container) return;
 
     const rows = buildPrintRows(records);
+    const printDate = new Date().toLocaleDateString('ja-JP');
     container.innerHTML = `
       <div class="print-sheet">
         <div class="print-header">
-          <h2>鮮魚原価・入荷管理 一覧印刷</h2>
-          <p>印刷日: ${new Date().toLocaleDateString('ja-JP')}</p>
+          <h2>鮮魚原価・入荷管理一覧</h2>
+          <p>印刷日: ${printDate}</p>
+          <p>ページ <span class="page-number"></span></p>
         </div>
         <table class="print-table">
-          <thead><tr><th>優先</th><th>入荷日</th><th>産地</th><th>品名</th><th>規格</th><th>ケース原価</th><th>経費込み原価</th><th>1尾原価</th><th>コメント</th></tr></thead>
+          <colgroup>
+            <col style="width: 5%;">
+            <col style="width: 13%;">
+            <col style="width: 12%;">
+            <col style="width: 18%;">
+            <col style="width: 8%;">
+            <col style="width: 14%;">
+            <col style="width: 14%;">
+            <col style="width: 14%;">
+            <col style="width: 22%;">
+          </colgroup>
+          <thead>
+            <tr class="print-title-row">
+              <th colspan="9">
+                <div class="print-title-grid">
+                  <span class="print-title-text">鮮魚原価・入荷管理一覧</span>
+                  <span class="print-title-date">印刷日: ${printDate}</span>
+                  <span class="print-title-page">ページ <span class="page-number"></span></span>
+                </div>
+              </th>
+            </tr>
+            <tr class="print-column-row">
+              <th>優先</th>
+              <th>入荷日</th>
+              <th>産地</th>
+              <th>品名</th>
+              <th>規格</th>
+              <th>ケース原価</th>
+              <th>経費込原価</th>
+              <th>1尾原価</th>
+              <th>コメント</th>
+            </tr>
+          </thead>
           <tbody>${rows || '<tr><td colspan="9">印刷対象のデータがありません。</td></tr>'}</tbody>
         </table>
         <footer class="print-footer">印刷日時: ${new Date().toLocaleString('ja-JP')} <span>｜</span> ページ <span class="page-number"></span></footer>
