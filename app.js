@@ -14,6 +14,7 @@
   const saveMessage = document.getElementById('saveMessage');
   const toastMessage = document.getElementById('toastMessage');
   const installButton = document.getElementById('installButton');
+  const refreshListButton = document.getElementById('refreshListButton');
   const submitButton = document.getElementById('submitButton');
   const formHeading = document.getElementById('formHeading');
   const summaryFields = {
@@ -153,7 +154,12 @@
   async function showTab(tabName, shouldRefresh = true) {
     tabs.forEach((tab) => tab.classList.toggle('is-active', tab.dataset.tab === tabName));
     panels.forEach((panel) => panel.classList.toggle('is-active', panel.dataset.panel === tabName));
-    if (shouldRefresh && (tabName === 'list' || tabName === 'print')) await refreshProducts();
+    if (shouldRefresh && tabName === 'list') await refreshProducts();
+    if (tabName === 'print') global.PrintManager.renderPrintPreview(productsCache);
+  }
+
+  function isListActive() {
+    return panels.some((panel) => panel.dataset.panel === 'list' && panel.classList.contains('is-active'));
   }
 
   function getPriority(priority) {
@@ -244,6 +250,25 @@
     listContainer.innerHTML = `<div class="list-table-wrap"><table class="list-table"><thead><tr><th>優先</th><th>入荷日</th><th>産地</th><th>品名</th><th>規格</th><th>ケース原価</th><th>経費込み原価</th><th>1尾（P）</th><th>コメント</th><th>操作</th></tr></thead><tbody>${rows}</tbody></table></div><div class="list-cards">${cards}</div>`;
   }
 
+  function rerenderActiveListPreservingScroll() {
+    if (!isListActive()) return;
+    const beforeY = window.scrollY;
+    const tableWrap = listContainer.querySelector('.list-table-wrap');
+    const tableScrollLeft = tableWrap ? tableWrap.scrollLeft : 0;
+
+    renderList(productsCache);
+
+    const nextTableWrap = listContainer.querySelector('.list-table-wrap');
+    if (nextTableWrap) nextTableWrap.scrollLeft = tableScrollLeft;
+    window.scrollTo(0, beforeY);
+  }
+
+  function upsertProductCache(product) {
+    const index = productsCache.findIndex((item) => item.id === product.id);
+    if (index === -1) productsCache = [...productsCache, product];
+    else productsCache = productsCache.map((item) => (item.id === product.id ? product : item));
+  }
+
   function showListError(message) {
     listContainer.innerHTML = `<div class="empty-card"><h3>Googleとの通信に失敗しました</h3><p>${escapeHtml(message)} 接続設定とネットワークを確認してください。</p></div>`;
   }
@@ -302,8 +327,7 @@
 
   async function startEdit(id) {
     try {
-      const products = await database.getProducts();
-      const product = products.find((item) => item.id === id);
+      const product = productsCache.find((item) => item.id === id);
       if (!product) throw new Error('編集対象のデータが見つかりません。');
       editingId = id;
       setFormData(product);
@@ -319,8 +343,10 @@
     if (!window.confirm('削除しますか？')) return;
     try {
       await database.deleteProduct(id);
+      productsCache = productsCache.filter((item) => item.id !== id);
       if (editingId === id) resetForm();
-      await refreshProducts();
+      rerenderActiveListPreservingScroll();
+      global.PrintManager.renderPrintPreview(productsCache);
     } catch (error) {
       showListError(error.message);
     }
@@ -328,8 +354,7 @@
 
   async function copyLastProduct() {
     try {
-      const products = await database.getProducts();
-      const lastProduct = products.slice().sort((a, b) => dateValue(b.createdAt) - dateValue(a.createdAt))[0];
+      const lastProduct = productsCache.slice().sort((a, b) => dateValue(b.createdAt) - dateValue(a.createdAt))[0];
       if (!lastProduct) {
         saveMessage.textContent = 'コピーできる登録データがありません。';
         return;
@@ -398,11 +423,14 @@
     submitButton.disabled = true;
     try {
       if (isEditing) {
-        await database.updateProduct(editingId, product);
+        const savedProduct = await database.updateProduct(editingId, product);
+        upsertProductCache(savedProduct);
       } else {
-        await database.addProduct(product);
+        const savedProduct = await database.addProduct(product);
+        upsertProductCache(savedProduct);
       }
-      await refreshProducts();
+      rerenderActiveListPreservingScroll();
+      global.PrintManager.renderPrintPreview(productsCache);
       database.clearDraft();
       if (isEditing) {
         resetForm(false);
@@ -432,6 +460,7 @@
     form.addEventListener('submit', (event) => { void handleSubmit(event); });
     document.getElementById('resetButton').addEventListener('click', () => resetForm());
     document.getElementById('copyLastButton').addEventListener('click', () => { void copyLastProduct(); });
+    refreshListButton?.addEventListener('click', () => { void refreshProducts(); });
     document.getElementById('csvDownloadButton').addEventListener('click', downloadCsv);
     document.getElementById('printButton').addEventListener('click', () => { void global.PrintManager.printCurrentProducts(); });
     installButton?.addEventListener('click', handleInstallClick);

@@ -161,6 +161,7 @@ button, input, select, textarea { font: inherit; }
 .empty-card { padding: 34px; border: 1px dashed #bfd6fb; border-radius: 20px; background: #f8fbff; text-align: center; }
 .list-header { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 18px; }
 .list-header h2 { margin: 0; }
+.list-actions { display: flex; gap: 10px; flex-wrap: wrap; }
 
 .print-preview { padding: 14px; border: 1px solid var(--line); border-radius: 18px; overflow-x: auto; }
 .print-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-bottom: 14px; margin-bottom: 14px; border-bottom: 1px solid #dce7fb; }
@@ -191,7 +192,8 @@ button, input, select, textarea { font: inherit; }
   #installButton { width: 100%; }
   .home-action span { display: inline; margin: 0 8px 0 0; font-size: 1.25rem; }
   .list-header { align-items: stretch; flex-direction: column; }
-  .list-header .secondary-button { width: 100%; }
+  .list-actions { display: grid; grid-template-columns: 1fr 1fr; }
+  .list-actions .secondary-button { width: 100%; }
   .print-header { align-items: flex-start; flex-direction: column; }
 }
 
