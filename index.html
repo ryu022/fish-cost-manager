@@ -189,7 +189,9 @@
     <script src="print.js"></script>
     <script src="app.js"></script>
     <script>
-      if ('serviceWorker' in navigator) {
+      const isGitHubPages = window.location.protocol === 'https:' && window.location.hostname.endsWith('github.io');
+
+      if ('serviceWorker' in navigator && isGitHubPages) {
         window.addEventListener('load', () => {
           let isReloading = false;
           const reloadIfNeeded = () => {
