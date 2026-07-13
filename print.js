@@ -16,20 +16,61 @@
     });
   }
 
+  function standardLabel(standard) {
+    return standard === '尾' || standard === 'P' || standard === '尾/P' || standard === 'tailP'
+      ? '尾/P'
+      : (standard || '—');
+  }
+
+  function normalizeStandard(standard) {
+    if (standard === '尾' || standard === 'P' || standard === '尾/P' || standard === 'tailP') return 'tailP';
+    if (standard === 'kg') return 'kg';
+    if (standard === 'c/s') return 'c/s';
+    return '';
+  }
+
+  function parseCurrencyValue(value) {
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  function formatCurrencyOrBlank(value) {
+    return value === null || value === undefined ? '' : formatCurrency(value);
+  }
+
+  function calculateOneFishDisplayValue(record, standard) {
+    const expenseCost = parseCurrencyValue(record.expenseCost);
+    const tailCount = parseCurrencyValue(record.tailCount);
+
+    if (standard === 'c/s') return null;
+    if (standard === 'tailP') return expenseCost;
+    if (standard === 'kg') {
+      if (expenseCost === null || tailCount === null || tailCount <= 0) return null;
+      return Math.round(((expenseCost / tailCount) + Number.EPSILON) * 100) / 100;
+    }
+    return parseCurrencyValue(record.oneFishCost);
+  }
+
   function buildPrintRows(records) {
-    return sortRecords(records).map((record) => `
+    return sortRecords(records).map((record) => {
+      const standard = normalizeStandard(record.standard);
+      const caseCost = standard === 'tailP' ? '' : formatCurrency(record.caseCost);
+      const oneFishCost = formatCurrencyOrBlank(calculateOneFishDisplayValue(record, standard));
+
+      return `
       <tr>
         <td class="print-priority">${getPriority(record.priority).mark}</td>
         <td>${record.arrivalDate || '—'}</td>
         <td>${record.origin || '—'}</td>
         <td>${record.productName || '—'}</td>
-        <td>${record.standard || '—'}</td>
-        <td>${formatCurrency(record.caseCost)}</td>
+        <td>${standardLabel(record.standard)}</td>
+        <td>${caseCost}</td>
         <td>${formatCurrency(record.expenseCost)}</td>
-        <td>${formatCurrency(record.oneFishCost)}</td>
+        <td>${oneFishCost}</td>
         <td>${record.comment || '—'}</td>
       </tr>
-    `).join('');
+    `;
+    }).join('');
   }
 
   function renderPrintPreview(records) {
@@ -75,7 +116,7 @@
               <th>規格</th>
               <th>ケース原価</th>
               <th>経費込原価</th>
-              <th>1尾原価</th>
+              <th>1尾（P）</th>
               <th>コメント</th>
             </tr>
           </thead>

@@ -63,14 +63,14 @@
                       <input id="productName" name="productName" type="text" placeholder="例：ブリ" />
                     </div>
 
-                    <div class="field">
-                      <label for="standard">規格</label>
-                      <select id="standard" name="standard">
-                        <option value="尾">尾</option>
-                        <option value="c/s">c/s</option>
-                        <option value="kg">kg</option>
-                        <option value="P">P</option>
-                      </select>
+                    <div class="field full">
+                      <label>規格</label>
+                      <input id="standard" name="standard" type="hidden" value="tailP" />
+                      <div class="standard-buttons" role="radiogroup" aria-label="規格選択">
+                        <button type="button" class="standard-button" data-standard="kg" aria-pressed="false">kg</button>
+                        <button type="button" class="standard-button is-active" data-standard="tailP" aria-pressed="true">尾/P</button>
+                        <button type="button" class="standard-button" data-standard="c/s" aria-pressed="false">c/s</button>
+                      </div>
                     </div>
 
                     <div class="field">
@@ -145,12 +145,12 @@
                     <span>ケース原価</span>
                     <strong id="summaryExpenseCost">—</strong>
                   </div>
-                  <div class="summary-card">
-                    <span>経費込みケース原価</span>
+                  <div class="summary-card" id="summaryExpenseCard">
+                    <span id="summaryExpenseLabel">経費込みケース原価</span>
                     <strong id="summaryCaseCost">—</strong>
                   </div>
-                  <div class="summary-card">
-                    <span>1尾原価</span>
+                  <div class="summary-card" id="summaryOneFishCard">
+                    <span>1尾（P）</span>
                     <strong id="summaryOneFishCost">—</strong>
                   </div>
                 </div>

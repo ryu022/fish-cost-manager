@@ -5,6 +5,13 @@
     return { ...APP_CONFIG.defaultForm };
   }
 
+  function normalizeStandard(standard) {
+    if (standard === '尾' || standard === 'P' || standard === '尾/P' || standard === 'tailP') return 'tailP';
+    if (standard === 'kg') return 'kg';
+    if (standard === 'c/s') return 'c/s';
+    return APP_CONFIG.defaultForm.standard;
+  }
+
   function normalizeProduct(data) {
     const source = data && typeof data === 'object' ? data : {};
     return {
@@ -13,7 +20,7 @@
       updatedAt: source.updatedAt || '',
       origin: source.origin || '',
       productName: source.productName || '',
-      standard: APP_CONFIG.standards.includes(source.standard) ? source.standard : APP_CONFIG.defaultForm.standard,
+      standard: normalizeStandard(source.standard),
       cost: source.cost ?? '',
       costType: source.costType === 'case' ? 'case' : 'kg',
       kgCount: source.kgCount ?? '',

@@ -1,7 +1,7 @@
 const PRODUCTS_SHEET_NAME = 'Products';
 const PRODUCTS_HEADERS = [
   'ID', '登録日時', '更新日時', '入荷日', '優先度', '産地', '品名', '規格',
-  'kg数', '原価区分', '原価', '経費込み原価', 'ケース原価', '1尾原価', '尾数', 'コメント',
+  'kg数', '原価区分', '原価', '経費込み原価', 'ケース原価', '1尾（P）', '尾数', 'コメント',
 ];
 
 function getProductsSheet_() {

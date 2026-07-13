@@ -7,7 +7,8 @@
   const tabs = Array.from(document.querySelectorAll('.tab'));
   const panels = Array.from(document.querySelectorAll('.panel'));
   const listContainer = document.getElementById('recordList');
-  const standardSelect = document.getElementById('standard');
+  const standardInput = document.getElementById('standard');
+  const standardButtons = Array.from(document.querySelectorAll('.standard-button'));
   const kgCountWrap = document.getElementById('kgCountWrap');
   const tailCountWrap = document.getElementById('tailCountWrap');
   const saveMessage = document.getElementById('saveMessage');
@@ -24,16 +25,58 @@
   let productsCache = [];
   let toastTimer = null;
 
+  function normalizeStandard(standard) {
+    if (standard === '尾' || standard === 'P' || standard === '尾/P' || standard === 'tailP') return 'tailP';
+    if (standard === 'kg') return 'kg';
+    if (standard === 'c/s') return 'c/s';
+    return config.defaultForm.standard;
+  }
+
+  function standardLabel(standard) {
+    const normalized = normalizeStandard(standard);
+    if (normalized === 'tailP') return '尾/P';
+    return normalized;
+  }
+
+  function syncStandardButtons() {
+    const selected = normalizeStandard(standardInput.value);
+    standardButtons.forEach((button) => {
+      const isActive = button.dataset.standard === selected;
+      button.classList.toggle('is-active', isActive);
+      button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+    });
+  }
+
+  function setStandard(standard, options = {}) {
+    const normalized = normalizeStandard(standard);
+    const { autoCostType = false } = options;
+
+    standardInput.value = normalized;
+    syncStandardButtons();
+
+    if (autoCostType) {
+      if (normalized === 'kg') {
+        document.querySelector('input[name="costType"][value="kg"]').checked = true;
+      }
+      if (normalized === 'c/s') {
+        document.querySelector('input[name="costType"][value="case"]').checked = true;
+      }
+    }
+
+    updateQuantityVisibility();
+    saveDraft();
+  }
+
   function getFormData() {
-    const standard = standardSelect.value;
+    const costType = document.querySelector('input[name="costType"]:checked').value;
     return {
       origin: document.getElementById('origin').value.trim(),
       productName: document.getElementById('productName').value.trim(),
-      standard,
+      standard: normalizeStandard(standardInput.value),
       cost: document.getElementById('cost').value,
-      costType: document.querySelector('input[name="costType"]:checked').value,
-      kgCount: standard === 'kg' ? document.getElementById('kgCount').value : '',
-      tailCount: standard === '尾' ? document.getElementById('tailCount').value : '',
+      costType,
+      kgCount: costType === 'kg' ? document.getElementById('kgCount').value : '',
+      tailCount: document.getElementById('tailCount').value,
       arrivalDate: document.getElementById('arrivalDate').value,
       priority: document.querySelector('input[name="priority"]:checked').value,
       comment: document.getElementById('comment').value.trim(),
@@ -44,7 +87,8 @@
     const values = { ...config.defaultForm, ...data };
     document.getElementById('origin').value = values.origin;
     document.getElementById('productName').value = values.productName;
-    standardSelect.value = config.standards.includes(values.standard) ? values.standard : config.defaultForm.standard;
+    standardInput.value = normalizeStandard(values.standard);
+    syncStandardButtons();
     document.getElementById('cost').value = values.cost;
     document.querySelector(`input[name="costType"][value="${values.costType}"]`).checked = true;
     document.getElementById('kgCount').value = values.kgCount;
@@ -58,8 +102,9 @@
   }
 
   function updateQuantityVisibility() {
-    kgCountWrap.classList.toggle('is-hidden', standardSelect.value !== 'kg');
-    tailCountWrap.classList.toggle('is-hidden', standardSelect.value !== '尾');
+    const standard = normalizeStandard(standardInput.value);
+    kgCountWrap.classList.toggle('is-hidden', standard !== 'kg');
+    tailCountWrap.classList.remove('is-hidden');
   }
 
   function renderSummary() {
@@ -135,16 +180,44 @@
     return String(value ?? '—').replace(/[&<>'"]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[character]);
   }
 
+  function parseCurrencyValue(value) {
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  function formatCurrencyOrBlank(value) {
+    return value === null || value === undefined ? '' : calc.formatCurrency(value);
+  }
+
+  function calculateOneFishDisplayValue(product, standard) {
+    const expenseCost = parseCurrencyValue(product.expenseCost);
+    const tailCount = parseCurrencyValue(product.tailCount);
+
+    if (standard === 'c/s') return null;
+    if (standard === 'tailP') return expenseCost;
+    if (standard === 'kg') {
+      if (expenseCost === null || tailCount === null || tailCount <= 0) return null;
+      return Math.round(((expenseCost / tailCount) + Number.EPSILON) * 100) / 100;
+    }
+    return parseCurrencyValue(product.oneFishCost);
+  }
+
   function productValues(product) {
+    const standard = normalizeStandard(product.standard);
+    const caseCost = standard === 'tailP'
+      ? ''
+      : calc.formatCurrency(product.caseCost);
+    const oneFishCost = formatCurrencyOrBlank(calculateOneFishDisplayValue(product, standard));
+
     return {
       priority: getPriority(product.priority),
       date: product.arrivalDate || '—',
       origin: product.origin || '—',
       productName: product.productName || '—',
-      standard: product.standard || '—',
-      caseCost: calc.formatCurrency(product.caseCost),
+      standard: product.standard ? standardLabel(product.standard) : '—',
+      caseCost,
       expenseCost: calc.formatCurrency(product.expenseCost),
-      oneFishCost: calc.formatCurrency(product.oneFishCost),
+      oneFishCost,
       comment: product.comment || '—',
     };
   }
@@ -166,9 +239,9 @@
     }).join('');
     const cards = sortedProducts.map((product) => {
       const value = productValues(product);
-      return `<article class="record-card"><div class="record-card__heading"><span class="priority-chip ${value.priority.className}">${value.priority.mark} ${value.priority.name}</span><span class="record-date">入荷日 ${escapeHtml(value.date)}</span></div><div class="record-line"><div class="record-item"><span class="label">産地</span><strong>${escapeHtml(value.origin)}</strong></div><div class="record-item"><span class="label">品名</span><strong>${escapeHtml(value.productName)}</strong></div><div class="record-item"><span class="label">規格</span><strong>${escapeHtml(value.standard)}</strong></div><div class="record-item"><span class="label">ケース原価</span><strong>${escapeHtml(value.caseCost)}</strong></div><div class="record-item"><span class="label">経費込み原価</span><strong>${escapeHtml(value.expenseCost)}</strong></div><div class="record-item"><span class="label">1尾原価</span><strong>${escapeHtml(value.oneFishCost)}</strong></div></div><p class="comment-box"><span class="label">コメント</span>${escapeHtml(value.comment)}</p>${actionButtons(product.id)}</article>`;
+      return `<article class="record-card"><div class="record-card__heading"><span class="priority-chip ${value.priority.className}">${value.priority.mark} ${value.priority.name}</span><span class="record-date">入荷日 ${escapeHtml(value.date)}</span></div><div class="record-line"><div class="record-item"><span class="label">産地</span><strong>${escapeHtml(value.origin)}</strong></div><div class="record-item"><span class="label">品名</span><strong>${escapeHtml(value.productName)}</strong></div><div class="record-item"><span class="label">規格</span><strong>${escapeHtml(value.standard)}</strong></div><div class="record-item"><span class="label">ケース原価</span><strong>${escapeHtml(value.caseCost)}</strong></div><div class="record-item"><span class="label">経費込み原価</span><strong>${escapeHtml(value.expenseCost)}</strong></div><div class="record-item"><span class="label">1尾（P）</span><strong>${escapeHtml(value.oneFishCost)}</strong></div></div><p class="comment-box"><span class="label">コメント</span>${escapeHtml(value.comment)}</p>${actionButtons(product.id)}</article>`;
     }).join('');
-    listContainer.innerHTML = `<div class="list-table-wrap"><table class="list-table"><thead><tr><th>優先</th><th>入荷日</th><th>産地</th><th>品名</th><th>規格</th><th>ケース原価</th><th>経費込み原価</th><th>1尾原価</th><th>コメント</th><th>操作</th></tr></thead><tbody>${rows}</tbody></table></div><div class="list-cards">${cards}</div>`;
+    listContainer.innerHTML = `<div class="list-table-wrap"><table class="list-table"><thead><tr><th>優先</th><th>入荷日</th><th>産地</th><th>品名</th><th>規格</th><th>ケース原価</th><th>経費込み原価</th><th>1尾（P）</th><th>コメント</th><th>操作</th></tr></thead><tbody>${rows}</tbody></table></div><div class="list-cards">${cards}</div>`;
   }
 
   function showListError(message) {
@@ -196,12 +269,34 @@
     if (clearDraft) database.clearDraft();
   }
 
+  function resetAfterRegister(currentFormData) {
+    editingId = null;
+    setFormData({
+      ...config.defaultForm,
+      origin: currentFormData.origin,
+      standard: currentFormData.standard,
+      costType: currentFormData.costType,
+      priority: currentFormData.priority,
+      arrivalDate: currentFormData.arrivalDate || config.defaultForm.arrivalDate,
+      productName: '',
+      cost: '',
+      kgCount: '',
+      tailCount: '',
+      comment: '',
+    });
+    submitButton.textContent = '登録';
+    formHeading.textContent = '新規登録';
+    saveMessage.textContent = '入力途中は自動保存されます。';
+    requestAnimationFrame(() => document.getElementById('productName').focus());
+  }
+
   function validateProduct(product) {
     if (!product.origin || !product.productName || !product.arrivalDate || product.cost === '') {
       return '産地・品名・入荷日・原価を入力してください。';
     }
-    if (product.standard === 'kg' && product.kgCount === '') return '規格がkgの場合はkg数を入力してください。';
-    if (product.standard === '尾' && product.tailCount === '') return '規格が尾の場合は尾数を入力してください。';
+    if (normalizeStandard(product.standard) === 'kg' && product.costType === 'kg' && product.kgCount === '') {
+      return 'kg原価の場合はkg数を入力してください。';
+    }
     return '';
   }
 
@@ -263,14 +358,14 @@
       showListError('ダウンロードできるデータがありません。');
       return;
     }
-    const headers = ['優先', '入荷日', '産地', '品名', '規格', 'kg数', '原価区分', '原価', '経費込み原価', 'ケース原価', '1尾原価', '尾数', 'コメント'];
+    const headers = ['優先', '入荷日', '産地', '品名', '規格', 'kg数', '原価区分', '原価', '経費込み原価', 'ケース原価', '1尾（P）', '尾数', 'コメント'];
     const escapeCsv = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
     const rows = sortProducts(productsCache).map((product) => [
       getPriority(product.priority).mark,
       product.arrivalDate,
       product.origin,
       product.productName,
-      product.standard,
+      standardLabel(product.standard),
       product.kgCount,
       product.costType,
       product.cost,
@@ -302,13 +397,21 @@
     const isEditing = Boolean(editingId);
     submitButton.disabled = true;
     try {
-      if (isEditing) await database.updateProduct(editingId, product);
-      else await database.addProduct(product);
-      database.clearDraft();
-      resetForm(false);
+      if (isEditing) {
+        await database.updateProduct(editingId, product);
+      } else {
+        await database.addProduct(product);
+      }
       await refreshProducts();
-      await showTab('list', false);
-      showToast(isEditing ? '更新しました' : '登録しました');
+      database.clearDraft();
+      if (isEditing) {
+        resetForm(false);
+        await showTab('list', false);
+        showToast('更新しました');
+      } else {
+        resetAfterRegister(formData);
+        showToast('登録しました');
+      }
     } catch (error) {
       saveMessage.textContent = `保存に失敗しました。${error.message}`;
     } finally {
@@ -318,7 +421,12 @@
 
   function bindEvents() {
     navigationButtons.forEach((button) => button.addEventListener('click', () => { void showTab(button.dataset.tab); }));
-    standardSelect.addEventListener('change', updateQuantityVisibility);
+    standardButtons.forEach((button) => {
+      button.addEventListener('click', () => setStandard(button.dataset.standard, { autoCostType: true }));
+    });
+    document.querySelectorAll('input[name="costType"]').forEach((input) => {
+      input.addEventListener('change', saveDraft);
+    });
     form.addEventListener('input', saveDraft);
     form.addEventListener('change', saveDraft);
     form.addEventListener('submit', (event) => { void handleSubmit(event); });
