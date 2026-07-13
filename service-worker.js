@@ -1,4 +1,4 @@
-const CACHE_NAME = 'fish-cost-manager-static-v2';
+const CACHE_NAME = 'fish-cost-manager-v4';
 const STATIC_ASSETS = [
   './',
   './index.html',

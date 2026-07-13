@@ -191,7 +191,29 @@
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-          navigator.serviceWorker.register('./service-worker.js').catch((error) => {
+          let isReloading = false;
+          const reloadIfNeeded = () => {
+            if (isReloading) return;
+            isReloading = true;
+            window.location.reload();
+          };
+
+          navigator.serviceWorker.addEventListener('controllerchange', reloadIfNeeded);
+
+          navigator.serviceWorker.register('./service-worker.js').then((registration) => {
+            registration.update();
+
+            registration.addEventListener('updatefound', () => {
+              const installingWorker = registration.installing;
+              if (!installingWorker) return;
+
+              installingWorker.addEventListener('statechange', () => {
+                if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                  reloadIfNeeded();
+                }
+              });
+            });
+          }).catch((error) => {
             console.error('Service Worker の登録に失敗しました。', error);
           });
         });
