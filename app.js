@@ -333,18 +333,18 @@
       return;
     }
     const sortedProducts = sortProducts(productsCache);
-    const insertIndex = sortedProducts.findIndex((p) => p.id === product.id);
+    const productIndex = sortedProducts.findIndex((p) => p.id === product.id);
     const tempBody = document.createElement('tbody');
     tempBody.innerHTML = buildTableRow(product);
     const newTr = tempBody.firstElementChild;
     const tempDiv = document.createElement('div');
     tempDiv.innerHTML = buildCard(product);
     const newCard = tempDiv.firstElementChild;
-    if (insertIndex < 0 || insertIndex >= sortedProducts.length - 1) {
+    if (productIndex < 0 || productIndex >= sortedProducts.length - 1) {
       listView.tableBody.appendChild(newTr);
       listView.cardsContainer.appendChild(newCard);
     } else {
-      const nextId = sortedProducts[insertIndex + 1].id;
+      const nextId = sortedProducts[productIndex + 1].id;
       const nextTr = listView.tableBody.querySelector(`tr[data-id="${nextId}"]`);
       const nextCard = listView.cardsContainer.querySelector(`article[data-id="${nextId}"]`);
       listView.tableBody.insertBefore(newTr, nextTr || null);
