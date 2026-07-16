@@ -1,6 +1,7 @@
 (function (global) {
   const { formatCurrency } = global.Calc;
   const priorities = global.APP_CONFIG.priorityOptions;
+  const printContainer = document.getElementById('printPreview');
 
   function getPriority(priority) {
     return priorities.find((item) => item.value === priority) || priorities[2];
@@ -38,24 +39,12 @@
     return value === null || value === undefined ? '' : formatCurrency(value);
   }
 
-  function calculateOneFishDisplayValue(record, standard) {
-    const expenseCost = parseCurrencyValue(record.expenseCost);
-    const tailCount = parseCurrencyValue(record.tailCount);
-
-    if (standard === 'c/s') return null;
-    if (standard === 'tailP') return expenseCost;
-    if (standard === 'kg') {
-      if (expenseCost === null || tailCount === null || tailCount <= 0) return null;
-      return Math.round(((expenseCost / tailCount) + Number.EPSILON) * 100) / 100;
-    }
-    return parseCurrencyValue(record.oneFishCost);
-  }
-
+  // 一覧と同じ並び順で印刷データを構築します。
   function buildPrintRows(records) {
     return sortRecords(records).map((record) => {
       const standard = normalizeStandard(record.standard);
       const caseCost = standard === 'tailP' ? '' : formatCurrency(record.caseCost);
-      const oneFishCost = formatCurrencyOrBlank(calculateOneFishDisplayValue(record, standard));
+      const oneFishCost = formatCurrencyOrBlank(parseCurrencyValue(record.oneFishCost));
 
       return `
       <tr>
@@ -74,12 +63,11 @@
   }
 
   function renderPrintPreview(records) {
-    const container = document.getElementById('printPreview');
-    if (!container) return;
+    if (!printContainer) return;
 
     const rows = buildPrintRows(records);
     const printDate = new Date().toLocaleDateString('ja-JP');
-    container.innerHTML = `
+    printContainer.innerHTML = `
       <div class="print-sheet">
         <div class="print-header">
           <h2>鮮魚原価・入荷管理一覧</h2>
@@ -128,10 +116,9 @@
   }
 
   function renderPrintError(message) {
-    const container = document.getElementById('printPreview');
-    if (!container) return;
+    if (!printContainer) return;
     const safeMessage = String(message).replace(/[&<>'"]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[character]);
-    container.innerHTML = `<div class="empty-card"><h3>印刷データを取得できませんでした</h3><p>${safeMessage}</p></div>`;
+    printContainer.innerHTML = `<div class="empty-card"><h3>印刷データを取得できませんでした</h3><p>${safeMessage}</p></div>`;
   }
 
   async function printCurrentProducts() {

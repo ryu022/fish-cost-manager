@@ -7,6 +7,10 @@
     storageKeys: {
       draft: 'fish-cost-manager.draft',
     },
+    calculation: {
+      expenseMultiplier: 1.1,
+    },
+    costTypes: ['kg', 'case'],
     defaultForm: {
       origin: '',
       productName: '',
