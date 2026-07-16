@@ -265,6 +265,16 @@
     return `<div class="record-actions"><button type="button" class="secondary-button edit-button" data-action="edit" data-id="${id}">編集</button><button type="button" class="danger-button delete-button" data-action="delete" data-id="${id}">削除</button></div>`;
   }
 
+  function buildTableRow(product) {
+    const value = productValues(product);
+    return `<tr data-id="${product.id}"><td><span class="priority-chip ${value.priority.className}">${value.priority.mark}</span></td><td>${escapeHtml(value.date)}</td><td>${escapeHtml(value.origin)}</td><td>${escapeHtml(value.productName)}</td><td>${escapeHtml(value.standard)}</td><td>${escapeHtml(value.caseCost)}</td><td>${escapeHtml(value.expenseCost)}</td><td>${escapeHtml(value.oneFishCost)}</td><td>${escapeHtml(value.comment)}</td><td>${actionButtons(product.id)}</td></tr>`;
+  }
+
+  function buildCard(product) {
+    const value = productValues(product);
+    return `<article class="record-card" data-id="${product.id}"><div class="record-card__heading"><span class="priority-chip ${value.priority.className}">${value.priority.mark} ${value.priority.name}</span><span class="record-date">入荷日 ${escapeHtml(value.date)}</span></div><div class="record-line"><div class="record-item"><span class="label">産地</span><strong>${escapeHtml(value.origin)}</strong></div><div class="record-item"><span class="label">品名</span><strong>${escapeHtml(value.productName)}</strong></div><div class="record-item"><span class="label">規格</span><strong>${escapeHtml(value.standard)}</strong></div><div class="record-item"><span class="label">ケース原価</span><strong>${escapeHtml(value.caseCost)}</strong></div><div class="record-item"><span class="label">経費込み原価</span><strong>${escapeHtml(value.expenseCost)}</strong></div><div class="record-item"><span class="label">1尾（P）</span><strong>${escapeHtml(value.oneFishCost)}</strong></div></div><p class="comment-box"><span class="label">コメント</span>${escapeHtml(value.comment)}</p>${actionButtons(product.id)}</article>`;
+  }
+
   function resetListViewReferences() {
     listView.tableWrap = null;
     listView.tableBody = null;
@@ -291,14 +301,8 @@
 
     ensureListStructure();
 
-    const rows = sortedProducts.map((product) => {
-      const value = productValues(product);
-      return `<tr><td><span class="priority-chip ${value.priority.className}">${value.priority.mark}</span></td><td>${escapeHtml(value.date)}</td><td>${escapeHtml(value.origin)}</td><td>${escapeHtml(value.productName)}</td><td>${escapeHtml(value.standard)}</td><td>${escapeHtml(value.caseCost)}</td><td>${escapeHtml(value.expenseCost)}</td><td>${escapeHtml(value.oneFishCost)}</td><td>${escapeHtml(value.comment)}</td><td>${actionButtons(product.id)}</td></tr>`;
-    }).join('');
-    const cards = sortedProducts.map((product) => {
-      const value = productValues(product);
-      return `<article class="record-card"><div class="record-card__heading"><span class="priority-chip ${value.priority.className}">${value.priority.mark} ${value.priority.name}</span><span class="record-date">入荷日 ${escapeHtml(value.date)}</span></div><div class="record-line"><div class="record-item"><span class="label">産地</span><strong>${escapeHtml(value.origin)}</strong></div><div class="record-item"><span class="label">品名</span><strong>${escapeHtml(value.productName)}</strong></div><div class="record-item"><span class="label">規格</span><strong>${escapeHtml(value.standard)}</strong></div><div class="record-item"><span class="label">ケース原価</span><strong>${escapeHtml(value.caseCost)}</strong></div><div class="record-item"><span class="label">経費込み原価</span><strong>${escapeHtml(value.expenseCost)}</strong></div><div class="record-item"><span class="label">1尾（P）</span><strong>${escapeHtml(value.oneFishCost)}</strong></div></div><p class="comment-box"><span class="label">コメント</span>${escapeHtml(value.comment)}</p>${actionButtons(product.id)}</article>`;
-    }).join('');
+    const rows = sortedProducts.map(buildTableRow).join('');
+    const cards = sortedProducts.map(buildCard).join('');
     listView.tableBody.innerHTML = rows;
     listView.cardsContainer.innerHTML = cards;
     listView.isEmpty = false;
@@ -319,6 +323,72 @@
     const index = productsCache.findIndex((item) => item.id === product.id);
     if (index === -1) productsCache.push(product);
     else productsCache[index] = product;
+  }
+
+  // 新規追加時: ソート順の正しい位置に1行だけ挿入します。
+  function appendProductToList(product) {
+    if (!isListActive()) return;
+    if (listView.isEmpty || !listView.tableBody || !listView.cardsContainer) {
+      renderList(productsCache);
+      return;
+    }
+    const sortedProducts = sortProducts(productsCache);
+    const productIndex = sortedProducts.findIndex((p) => p.id === product.id);
+    const tempBody = document.createElement('tbody');
+    tempBody.innerHTML = buildTableRow(product);
+    const newTr = tempBody.firstElementChild;
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = buildCard(product);
+    const newCard = tempDiv.firstElementChild;
+    if (productIndex < 0 || productIndex >= sortedProducts.length - 1) {
+      listView.tableBody.appendChild(newTr);
+      listView.cardsContainer.appendChild(newCard);
+    } else {
+      const nextId = sortedProducts[productIndex + 1].id;
+      const nextTr = listView.tableBody.querySelector(`tr[data-id="${nextId}"]`);
+      const nextCard = listView.cardsContainer.querySelector(`article[data-id="${nextId}"]`);
+      listView.tableBody.insertBefore(newTr, nextTr || null);
+      listView.cardsContainer.insertBefore(newCard, nextCard || null);
+    }
+  }
+
+  // 削除時: 対象行だけ取り除き、空なら空表示へ切り替えます。
+  function removeProductFromList(id) {
+    if (!isListActive()) return;
+    if (!listView.tableBody || !listView.cardsContainer) return;
+    const tr = listView.tableBody.querySelector(`tr[data-id="${id}"]`);
+    const card = listView.cardsContainer.querySelector(`article[data-id="${id}"]`);
+    if (tr) tr.remove();
+    if (card) card.remove();
+    if (!listView.tableBody.firstElementChild) {
+      elements.listContainer.innerHTML = '<div class="empty-card"><h3>まだ登録データがありません</h3><p>新規登録から入荷情報を登録してください。</p></div>';
+      listView.isEmpty = true;
+      resetListViewReferences();
+    }
+  }
+
+  // 編集時: ソート順が変わらなければ対象行だけ更新し、変わる場合は全体再描画します。
+  function updateProductInList(product) {
+    if (!isListActive()) return;
+    if (listView.isEmpty || !listView.tableBody || !listView.cardsContainer) {
+      renderList(productsCache);
+      return;
+    }
+    const sortedProducts = sortProducts(productsCache);
+    const newIndex = sortedProducts.findIndex((p) => p.id === product.id);
+    const trs = Array.from(listView.tableBody.querySelectorAll('tr[data-id]'));
+    const currentIndex = trs.findIndex((el) => el.dataset.id === String(product.id));
+    if (currentIndex !== newIndex) {
+      rerenderActiveListPreservingScroll();
+      return;
+    }
+    const tempBody = document.createElement('tbody');
+    tempBody.innerHTML = buildTableRow(product);
+    trs[currentIndex].replaceWith(tempBody.firstElementChild);
+    const cards = Array.from(listView.cardsContainer.querySelectorAll('article[data-id]'));
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = buildCard(product);
+    cards[currentIndex].replaceWith(tempDiv.firstElementChild);
   }
 
   function showListError(message) {
@@ -401,7 +471,7 @@
       const index = productsCache.findIndex((item) => item.id === id);
       if (index !== -1) productsCache.splice(index, 1);
       if (editingId === id) resetForm();
-      rerenderActiveListPreservingScroll();
+      removeProductFromList(id);
       global.PrintManager.renderPrintPreview(productsCache);
     } catch (error) {
       showListError(error.message);
@@ -478,14 +548,16 @@
     const isEditing = Boolean(editingId);
     elements.submitButton.disabled = true;
     try {
+      let savedProduct;
       if (isEditing) {
-        const savedProduct = await database.updateProduct(editingId, product);
+        savedProduct = await database.updateProduct(editingId, product);
         upsertProductCache(savedProduct);
+        updateProductInList(savedProduct);
       } else {
-        const savedProduct = await database.addProduct(product);
+        savedProduct = await database.addProduct(product);
         upsertProductCache(savedProduct);
+        appendProductToList(savedProduct);
       }
-      rerenderActiveListPreservingScroll();
       global.PrintManager.renderPrintPreview(productsCache);
       database.clearDraft();
       if (isEditing) {

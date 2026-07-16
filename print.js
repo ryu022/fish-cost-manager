@@ -3,6 +3,8 @@
   const priorities = global.APP_CONFIG.priorityOptions;
   const printContainer = document.getElementById('printPreview');
 
+  let cachedRecords = [];
+
   function getPriority(priority) {
     return priorities.find((item) => item.value === priority) || priorities[2];
   }
@@ -63,6 +65,7 @@
   }
 
   function renderPrintPreview(records) {
+    cachedRecords = records;
     if (!printContainer) return;
 
     const rows = buildPrintRows(records);
@@ -121,13 +124,10 @@
     printContainer.innerHTML = `<div class="empty-card"><h3>印刷データを取得できませんでした</h3><p>${safeMessage}</p></div>`;
   }
 
-  async function printCurrentProducts() {
-    try {
-      renderPrintPreview(await global.Database.getProducts());
-      window.print();
-    } catch (error) {
-      renderPrintError(error.message);
-    }
+  // 印刷はキャッシュ済みデータを使い、DBへの再取得を行いません。
+  function printCurrentProducts() {
+    renderPrintPreview(cachedRecords);
+    window.print();
   }
 
   global.PrintManager = { renderPrintPreview, renderPrintError, printCurrentProducts };
