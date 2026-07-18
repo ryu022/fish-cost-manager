@@ -15,30 +15,32 @@ function doPost(event) {
     const action = request.action;
     const product = request.payload || {};
     const sheet = getProductsSheet_();
+    const lastRow = sheet.getLastRow();
     const now = new Date();
 
     if (action === 'get') return jsonResponse_(true, getProducts_());
 
     if (action === 'add') {
       const id = Utilities.getUuid();
-      sheet.appendRow(productToRow_(product, id, now, now));
-      return jsonResponse_(true, rowToProduct_(productToRow_(product, id, now, now)));
+      const values = productToRow_(product, id, now, now);
+      appendProductRow_(sheet, values);
+      return jsonResponse_(true, rowToProduct_(values));
     }
 
     if (action === 'update') {
       if (!product.id) return jsonResponse_(false, null, 'IDが指定されていません。');
-      const row = findProductRow_(product.id);
+      const row = findProductRow_(sheet, product.id, lastRow);
       if (row === -1) return jsonResponse_(false, null, '更新対象が見つかりません。');
 
       const createdAt = sheet.getRange(row, 2).getValue();
       const values = productToRow_(product, product.id, createdAt, now);
-      sheet.getRange(row, 1, 1, PRODUCTS_HEADERS.length).setValues([values]);
+      sheet.getRange(row, 1, 1, PRODUCTS_COLUMN_COUNT).setValues([values]);
       return jsonResponse_(true, rowToProduct_(values));
     }
 
     if (action === 'delete') {
       if (!product.id) return jsonResponse_(false, null, 'IDが指定されていません。');
-      const row = findProductRow_(product.id);
+      const row = findProductRow_(sheet, product.id, lastRow);
       if (row === -1) return jsonResponse_(false, null, '削除対象が見つかりません。');
 
       sheet.deleteRow(row);

@@ -60,9 +60,15 @@
 
   let editingId = null;
   let productsCache = [];
+  let committedProductsCache = [];
+  let productsById = new Map();
+  let sortedProductIds = [];
+  let tokenIndexByKeyword = new Map();
   let toastTimer = null;
   let eventsBound = false;
   let deferredInstallPrompt = null;
+  let submitPending = false;
+  const deletePendingIds = new Set();
 
   // 規格表記の揺れを内部表現へ統一します。
   function normalizeStandard(standard) {
@@ -217,15 +223,78 @@
     return Number.isFinite(timestamp) ? timestamp : 0;
   }
 
+  function compareProducts(a, b) {
+    const priorityDifference = (priorityIndexByValue[getPriority(a.priority).value] ?? 2) - (priorityIndexByValue[getPriority(b.priority).value] ?? 2);
+    if (priorityDifference) return priorityDifference;
+    const arrivalDateDifference = dateValue(a.arrivalDate) - dateValue(b.arrivalDate);
+    if (arrivalDateDifference) return arrivalDateDifference;
+    return dateValue(a.createdAt) - dateValue(b.createdAt) || String(a.id).localeCompare(String(b.id));
+  }
+
+  function cloneProducts(products) {
+    return products.map((product) => ({ ...product }));
+  }
+
+  function productSearchText(product) {
+    return [
+      product.origin || '',
+      product.productName || '',
+      product.comment || '',
+      product.arrivalDate || '',
+      standardLabel(product.standard || ''),
+      String(product.id || ''),
+    ].join(' ').toLowerCase();
+  }
+
+  function tokenizeSearchText(text) {
+    return text
+      .replace(/[^A-Za-z0-9\u3040-\u30FF\u4E00-\u9FFF]+/g, ' ')
+      .trim()
+      .toLowerCase()
+      .split(/\s+/)
+      .filter(Boolean);
+  }
+
+  function rebuildTokenIndex() {
+    tokenIndexByKeyword = new Map();
+    productsById.forEach((product, id) => {
+      const tokens = tokenizeSearchText(productSearchText(product));
+      tokens.forEach((token) => {
+        const ids = tokenIndexByKeyword.get(token) || new Set();
+        ids.add(id);
+        tokenIndexByKeyword.set(token, ids);
+      });
+    });
+  }
+
+  function rebuildDerivedCachesFromMap() {
+    productsCache = sortProducts(Array.from(productsById.values()));
+    sortedProductIds = productsCache.map((product) => String(product.id));
+    rebuildTokenIndex();
+  }
+
+  function setProductsCache(products, { commit = false } = {}) {
+    const list = Array.isArray(products) ? products : [];
+    productsById = new Map(list.map((product) => [String(product.id), { ...product }]));
+    rebuildDerivedCachesFromMap();
+    if (commit) committedProductsCache = cloneProducts(productsCache);
+  }
+
+  function commitCurrentCache() {
+    committedProductsCache = cloneProducts(productsCache);
+  }
+
+  function rollbackToCommittedCache() {
+    console.time('描画:ロールバック');
+    setProductsCache(committedProductsCache, { commit: false });
+    rerenderActiveListPreservingScroll();
+    global.PrintManager.renderPrintPreview(productsCache);
+    console.timeEnd('描画:ロールバック');
+  }
+
   // 優先度 → 入荷日（古い順）→ 登録日時の順で常に表示します。
   function sortProducts(products) {
-    return products.slice().sort((a, b) => {
-      const priorityDifference = (priorityIndexByValue[getPriority(a.priority).value] ?? 2) - (priorityIndexByValue[getPriority(b.priority).value] ?? 2);
-      if (priorityDifference) return priorityDifference;
-      const arrivalDateDifference = dateValue(a.arrivalDate) - dateValue(b.arrivalDate);
-      if (arrivalDateDifference) return arrivalDateDifference;
-      return dateValue(a.createdAt) - dateValue(b.createdAt) || String(a.id).localeCompare(String(b.id));
-    });
+    return products.slice().sort(compareProducts);
   }
 
   function escapeHtml(value) {
@@ -289,23 +358,69 @@
     listView.cardsContainer = elements.listContainer.querySelector('[data-list-cards]');
   }
 
+  function buildTableRowElement(product) {
+    const template = document.createElement('template');
+    template.innerHTML = buildTableRow(product).trim();
+    return template.content.firstElementChild;
+  }
+
+  function buildCardElement(product) {
+    const template = document.createElement('template');
+    template.innerHTML = buildCard(product).trim();
+    return template.content.firstElementChild;
+  }
+
+  function getNextProductId(id) {
+    const currentIndex = sortedProductIds.indexOf(String(id));
+    if (currentIndex < 0 || currentIndex >= sortedProductIds.length - 1) return null;
+    return sortedProductIds[currentIndex + 1];
+  }
+
+  // 将来の検索高速化向けに、Mapとトークン索引で候補IDを取得できるようにします。
+  function searchProductIds(query) {
+    const tokens = tokenizeSearchText(query || '');
+    if (!tokens.length) return sortedProductIds.slice();
+    let candidateIds = null;
+    tokens.forEach((token) => {
+      const ids = tokenIndexByKeyword.get(token) || new Set();
+      candidateIds = candidateIds === null
+        ? new Set(ids)
+        : new Set(Array.from(candidateIds).filter((id) => ids.has(id)));
+    });
+    if (!candidateIds) return [];
+    return sortedProductIds.filter((id) => candidateIds.has(id));
+  }
+
   // 一覧パネルの枠は維持し、行データだけ差し替えて再描画コストを下げます。
-  function renderList(products) {
-    const sortedProducts = sortProducts(products);
+  function renderList() {
+    console.time('描画:一覧全体');
+    const sortedProducts = searchProductIds('')
+      .map((id) => productsById.get(id))
+      .filter(Boolean);
+
     if (!sortedProducts.length) {
       elements.listContainer.innerHTML = '<div class="empty-card"><h3>まだ登録データがありません</h3><p>新規登録から入荷情報を登録してください。</p></div>';
       listView.isEmpty = true;
       resetListViewReferences();
+      console.timeEnd('描画:一覧全体');
       return;
     }
 
     ensureListStructure();
 
-    const rows = sortedProducts.map(buildTableRow).join('');
-    const cards = sortedProducts.map(buildCard).join('');
-    listView.tableBody.innerHTML = rows;
-    listView.cardsContainer.innerHTML = cards;
+    const rowFragment = document.createDocumentFragment();
+    const cardFragment = document.createDocumentFragment();
+    sortedProducts.forEach((product) => {
+      rowFragment.appendChild(buildTableRowElement(product));
+      cardFragment.appendChild(buildCardElement(product));
+    });
+
+    listView.tableBody.textContent = '';
+    listView.cardsContainer.textContent = '';
+    listView.tableBody.appendChild(rowFragment);
+    listView.cardsContainer.appendChild(cardFragment);
     listView.isEmpty = false;
+    console.timeEnd('描画:一覧全体');
   }
 
   function rerenderActiveListPreservingScroll() {
@@ -313,82 +428,110 @@
     const beforeY = window.scrollY;
     const tableScrollLeft = listView.tableWrap ? listView.tableWrap.scrollLeft : 0;
 
-    renderList(productsCache);
+    renderList();
 
     if (listView.tableWrap) listView.tableWrap.scrollLeft = tableScrollLeft;
     window.scrollTo(0, beforeY);
   }
 
   function upsertProductCache(product) {
-    const index = productsCache.findIndex((item) => item.id === product.id);
-    if (index === -1) productsCache.push(product);
-    else productsCache[index] = product;
+    const productId = String(product.id);
+    productsById.set(productId, { ...product, id: productId });
+    rebuildDerivedCachesFromMap();
+  }
+
+  function removeProductFromCache(id) {
+    const targetId = String(id);
+    productsById.delete(targetId);
+    rebuildDerivedCachesFromMap();
+  }
+
+  function setRecordActionsDisabled(id, disabled) {
+    if (!isListActive()) return;
+    const targetId = String(id);
+    const controls = elements.listContainer.querySelectorAll(`button[data-id="${targetId}"]`);
+    controls.forEach((button) => {
+      button.disabled = disabled;
+    });
   }
 
   // 新規追加時: ソート順の正しい位置に1行だけ挿入します。
   function appendProductToList(product) {
-    if (!isListActive()) return;
-    if (listView.isEmpty || !listView.tableBody || !listView.cardsContainer) {
-      renderList(productsCache);
-      return;
-    }
-    const sortedProducts = sortProducts(productsCache);
-    const productIndex = sortedProducts.findIndex((p) => p.id === product.id);
-    const tempBody = document.createElement('tbody');
-    tempBody.innerHTML = buildTableRow(product);
-    const newTr = tempBody.firstElementChild;
-    const tempDiv = document.createElement('div');
-    tempDiv.innerHTML = buildCard(product);
-    const newCard = tempDiv.firstElementChild;
-    if (productIndex < 0 || productIndex >= sortedProducts.length - 1) {
-      listView.tableBody.appendChild(newTr);
-      listView.cardsContainer.appendChild(newCard);
-    } else {
-      const nextId = sortedProducts[productIndex + 1].id;
-      const nextTr = listView.tableBody.querySelector(`tr[data-id="${nextId}"]`);
-      const nextCard = listView.cardsContainer.querySelector(`article[data-id="${nextId}"]`);
+    const timer = '描画:登録差分';
+    console.time(timer);
+    try {
+      if (!isListActive()) return;
+      if (listView.isEmpty || !listView.tableBody || !listView.cardsContainer) ensureListStructure();
+      if (!listView.tableBody || !listView.cardsContainer) return;
+
+      const newTr = buildTableRowElement(product);
+      const newCard = buildCardElement(product);
+      const nextId = getNextProductId(product.id);
+      const nextTr = nextId ? listView.tableBody.querySelector(`tr[data-id="${nextId}"]`) : null;
+      const nextCard = nextId ? listView.cardsContainer.querySelector(`article[data-id="${nextId}"]`) : null;
+
       listView.tableBody.insertBefore(newTr, nextTr || null);
       listView.cardsContainer.insertBefore(newCard, nextCard || null);
+      listView.isEmpty = false;
+    } finally {
+      console.timeEnd(timer);
     }
   }
 
   // 削除時: 対象行だけ取り除き、空なら空表示へ切り替えます。
   function removeProductFromList(id) {
-    if (!isListActive()) return;
-    if (!listView.tableBody || !listView.cardsContainer) return;
-    const tr = listView.tableBody.querySelector(`tr[data-id="${id}"]`);
-    const card = listView.cardsContainer.querySelector(`article[data-id="${id}"]`);
-    if (tr) tr.remove();
-    if (card) card.remove();
-    if (!listView.tableBody.firstElementChild) {
-      elements.listContainer.innerHTML = '<div class="empty-card"><h3>まだ登録データがありません</h3><p>新規登録から入荷情報を登録してください。</p></div>';
-      listView.isEmpty = true;
-      resetListViewReferences();
+    const timer = '描画:削除差分';
+    console.time(timer);
+    try {
+      if (!isListActive()) return;
+      if (!listView.tableBody || !listView.cardsContainer) return;
+      const tr = listView.tableBody.querySelector(`tr[data-id="${id}"]`);
+      const card = listView.cardsContainer.querySelector(`article[data-id="${id}"]`);
+      if (tr) tr.remove();
+      if (card) card.remove();
+      if (!listView.tableBody.firstElementChild) {
+        elements.listContainer.innerHTML = '<div class="empty-card"><h3>まだ登録データがありません</h3><p>新規登録から入荷情報を登録してください。</p></div>';
+        listView.isEmpty = true;
+        resetListViewReferences();
+      }
+    } finally {
+      console.timeEnd(timer);
     }
   }
 
-  // 編集時: ソート順が変わらなければ対象行だけ更新し、変わる場合は全体再描画します。
+  // 編集時: 対象行だけ置換し、必要時は行を移動して並び順だけ調整します。
   function updateProductInList(product) {
-    if (!isListActive()) return;
-    if (listView.isEmpty || !listView.tableBody || !listView.cardsContainer) {
-      renderList(productsCache);
-      return;
+    const timer = '描画:編集差分';
+    console.time(timer);
+    try {
+      if (!isListActive()) return;
+      if (listView.isEmpty || !listView.tableBody || !listView.cardsContainer) {
+        appendProductToList(product);
+        return;
+      }
+
+      const id = String(product.id);
+      const existingTr = listView.tableBody.querySelector(`tr[data-id="${id}"]`);
+      const existingCard = listView.cardsContainer.querySelector(`article[data-id="${id}"]`);
+      if (!existingTr || !existingCard) {
+        appendProductToList(product);
+        return;
+      }
+
+      const nextId = getNextProductId(id);
+      const nextTr = nextId ? listView.tableBody.querySelector(`tr[data-id="${nextId}"]`) : null;
+      const nextCard = nextId ? listView.cardsContainer.querySelector(`article[data-id="${nextId}"]`) : null;
+
+      const newTr = buildTableRowElement(product);
+      const newCard = buildCardElement(product);
+      existingTr.replaceWith(newTr);
+      existingCard.replaceWith(newCard);
+
+      listView.tableBody.insertBefore(newTr, nextTr || null);
+      listView.cardsContainer.insertBefore(newCard, nextCard || null);
+    } finally {
+      console.timeEnd(timer);
     }
-    const sortedProducts = sortProducts(productsCache);
-    const newIndex = sortedProducts.findIndex((p) => p.id === product.id);
-    const trs = Array.from(listView.tableBody.querySelectorAll('tr[data-id]'));
-    const currentIndex = trs.findIndex((el) => el.dataset.id === String(product.id));
-    if (currentIndex !== newIndex) {
-      rerenderActiveListPreservingScroll();
-      return;
-    }
-    const tempBody = document.createElement('tbody');
-    tempBody.innerHTML = buildTableRow(product);
-    trs[currentIndex].replaceWith(tempBody.firstElementChild);
-    const cards = Array.from(listView.cardsContainer.querySelectorAll('article[data-id]'));
-    const tempDiv = document.createElement('div');
-    tempDiv.innerHTML = buildCard(product);
-    cards[currentIndex].replaceWith(tempDiv.firstElementChild);
   }
 
   function showListError(message) {
@@ -399,11 +542,17 @@
 
   // 全件取得は起動時・手動更新時のみ実行します。
   async function refreshProducts() {
+    let communicationTimerStarted = false;
     try {
-      productsCache = await database.getProducts();
-      renderList(productsCache);
+      console.time('通信:get');
+      communicationTimerStarted = true;
+      setProductsCache(await database.getProducts(), { commit: true });
+      console.timeEnd('通信:get');
+      communicationTimerStarted = false;
+      renderList();
       global.PrintManager.renderPrintPreview(productsCache);
     } catch (error) {
+      if (communicationTimerStarted) console.timeEnd('通信:get');
       console.error(error);
       showListError(error.message);
       global.PrintManager.renderPrintError(error.message);
@@ -452,7 +601,7 @@
 
   async function startEdit(id) {
     try {
-      const product = productsCache.find((item) => item.id === id);
+      const product = productsById.get(String(id));
       if (!product) throw new Error('編集対象のデータが見つかりません。');
       editingId = id;
       setFormData(product);
@@ -466,15 +615,38 @@
 
   async function removeProduct(id) {
     if (!window.confirm('削除しますか？')) return;
+    if (deletePendingIds.has(String(id))) return;
+
+    const target = productsById.get(String(id));
+    if (!target) {
+      showListError('削除対象のデータが見つかりません。');
+      return;
+    }
+
+    deletePendingIds.add(String(id));
+    setRecordActionsDisabled(id, true);
+
+    removeProductFromCache(id);
+    if (editingId === id) resetForm();
+    removeProductFromList(id);
+    global.PrintManager.renderPrintPreview(productsCache);
+
+    let deleteTimerStarted = false;
     try {
+      console.time('削除:通信');
+      deleteTimerStarted = true;
       await database.deleteProduct(id);
-      const index = productsCache.findIndex((item) => item.id === id);
-      if (index !== -1) productsCache.splice(index, 1);
-      if (editingId === id) resetForm();
-      removeProductFromList(id);
-      global.PrintManager.renderPrintPreview(productsCache);
+      console.timeEnd('削除:通信');
+      deleteTimerStarted = false;
+      commitCurrentCache();
+      showToast('削除しました');
     } catch (error) {
-      showListError(error.message);
+      if (deleteTimerStarted) console.timeEnd('削除:通信');
+      rollbackToCommittedCache();
+      elements.saveMessage.textContent = `削除に失敗しました。${error.message}`;
+    } finally {
+      deletePendingIds.delete(String(id));
+      setRecordActionsDisabled(id, false);
     }
   }
 
@@ -538,27 +710,72 @@
 
   async function handleSubmit(event) {
     event.preventDefault();
+    if (submitPending) return;
+
+    const totalTimer = editingId ? '編集:合計' : '登録:合計';
+    console.time(totalTimer);
+
     const formData = getFormData();
     const validationMessage = validateProduct(formData);
     if (validationMessage) {
       elements.saveMessage.textContent = validationMessage;
+      console.timeEnd(totalTimer);
       return;
     }
+
     const product = { ...formData, ...calc.calculateCosts(formData) };
     const isEditing = Boolean(editingId);
+    const nowIso = new Date().toISOString();
+    const optimisticId = isEditing ? String(editingId) : `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const previousEditingProduct = isEditing ? productsById.get(String(editingId)) : null;
+    const optimisticProduct = {
+      ...(previousEditingProduct || {}),
+      ...product,
+      id: optimisticId,
+      createdAt: previousEditingProduct?.createdAt || nowIso,
+      updatedAt: nowIso,
+    };
+
+    submitPending = true;
     elements.submitButton.disabled = true;
+    let communicationLabel = '';
+    let communicationTimerStarted = false;
+
+    upsertProductCache(optimisticProduct);
+    if (isEditing) {
+      updateProductInList(optimisticProduct);
+    } else {
+      appendProductToList(optimisticProduct);
+    }
+    global.PrintManager.renderPrintPreview(productsCache);
+
     try {
-      let savedProduct;
       if (isEditing) {
-        savedProduct = await database.updateProduct(editingId, product);
+        communicationLabel = '編集:通信';
+        console.time(communicationLabel);
+        communicationTimerStarted = true;
+        const savedProduct = await database.updateProduct(editingId, product);
+        console.timeEnd(communicationLabel);
+        communicationTimerStarted = false;
         upsertProductCache(savedProduct);
         updateProductInList(savedProduct);
+        commitCurrentCache();
+        global.PrintManager.renderPrintPreview(productsCache);
       } else {
-        savedProduct = await database.addProduct(product);
+        communicationLabel = '登録:通信';
+        console.time(communicationLabel);
+        communicationTimerStarted = true;
+        const savedProduct = await database.addProduct(product);
+        console.timeEnd(communicationLabel);
+        communicationTimerStarted = false;
+        removeProductFromCache(optimisticId);
+        removeProductFromList(optimisticId);
         upsertProductCache(savedProduct);
         appendProductToList(savedProduct);
+        commitCurrentCache();
+        global.PrintManager.renderPrintPreview(productsCache);
       }
-      global.PrintManager.renderPrintPreview(productsCache);
+
       database.clearDraft();
       if (isEditing) {
         resetForm(false);
@@ -569,9 +786,16 @@
         showToast('登録しました');
       }
     } catch (error) {
+      if (communicationTimerStarted) console.timeEnd(communicationLabel);
+      rollbackToCommittedCache();
+      if (isEditing && previousEditingProduct) {
+        editingId = previousEditingProduct.id;
+      }
       elements.saveMessage.textContent = `保存に失敗しました。${error.message}`;
     } finally {
+      submitPending = false;
       elements.submitButton.disabled = false;
+      console.timeEnd(totalTimer);
     }
   }
 

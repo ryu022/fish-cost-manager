@@ -1,5 +1,6 @@
 (function (global) {
   const APP_CONFIG = global.APP_CONFIG;
+  let requestSequence = 0;
 
   function cloneDefaultDraft() {
     return { ...APP_CONFIG.defaultForm };
@@ -43,6 +44,8 @@
   }
 
   async function request(action, payload) {
+    const timerLabel = `通信:${action}:${++requestSequence}`;
+    console.time(timerLabel);
     const apiUrl = getApiUrl();
     const options = action === 'get'
       ? { method: 'GET' }
@@ -51,13 +54,17 @@
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
           body: JSON.stringify({ action, payload }),
         };
-    const url = action === 'get' ? `${apiUrl}${apiUrl.includes('?') ? '&' : '?'}action=get` : apiUrl;
-    const response = await fetch(url, options);
-    if (!response.ok) throw new Error(`通信に失敗しました（${response.status}）。`);
+    try {
+      const url = action === 'get' ? `${apiUrl}${apiUrl.includes('?') ? '&' : '?'}action=get` : apiUrl;
+      const response = await fetch(url, options);
+      if (!response.ok) throw new Error(`通信に失敗しました（${response.status}）。`);
 
-    const result = await response.json();
-    if (!result.success) throw new Error(result.message || 'データの処理に失敗しました。');
-    return result.data;
+      const result = await response.json();
+      if (!result.success) throw new Error(result.message || 'データの処理に失敗しました。');
+      return result.data;
+    } finally {
+      console.timeEnd(timerLabel);
+    }
   }
 
   async function getProducts() {

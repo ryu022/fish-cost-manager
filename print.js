@@ -4,6 +4,8 @@
   const printContainer = document.getElementById('printPreview');
 
   let cachedRecords = [];
+  let cachedRowsSignature = '';
+  let cachedRowsHtml = '';
 
   function getPriority(priority) {
     return priorities.find((item) => item.value === priority) || priorities[2];
@@ -64,11 +66,25 @@
     }).join('');
   }
 
+  function recordsSignature(records) {
+    return records
+      .map((record) => `${record.id}|${record.updatedAt || ''}|${record.arrivalDate || ''}`)
+      .join('~');
+  }
+
   function renderPrintPreview(records) {
     cachedRecords = records;
     if (!printContainer) return;
 
-    const rows = buildPrintRows(records);
+    const signature = recordsSignature(records);
+    if (cachedRowsSignature !== signature) {
+      console.time('描画:印刷HTML');
+      cachedRowsHtml = buildPrintRows(records);
+      cachedRowsSignature = signature;
+      console.timeEnd('描画:印刷HTML');
+    }
+
+    const rows = cachedRowsHtml;
     const printDate = new Date().toLocaleDateString('ja-JP');
     printContainer.innerHTML = `
       <div class="print-sheet">
@@ -126,7 +142,7 @@
 
   // 印刷はキャッシュ済みデータを使い、DBへの再取得を行いません。
   function printCurrentProducts() {
-    renderPrintPreview(cachedRecords);
+    if (!printContainer?.innerHTML) renderPrintPreview(cachedRecords);
     window.print();
   }
 

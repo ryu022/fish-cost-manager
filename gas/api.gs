@@ -3,6 +3,9 @@ const PRODUCTS_HEADERS = [
   'ID', '登録日時', '更新日時', '入荷日', '優先度', '産地', '品名', '規格',
   'kg数', '原価区分', '原価', '経費込み原価', 'ケース原価', '1尾（P）', '尾数', 'コメント',
 ];
+const PRODUCTS_COLUMN_COUNT = PRODUCTS_HEADERS.length;
+const PRODUCTS_HEADER_ROW = 1;
+const PRODUCTS_DATA_START_ROW = 2;
 
 function getProductsSheet_() {
   const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
@@ -10,7 +13,7 @@ function getProductsSheet_() {
 
   if (!sheet) {
     sheet = spreadsheet.insertSheet(PRODUCTS_SHEET_NAME);
-    sheet.getRange(1, 1, 1, PRODUCTS_HEADERS.length).setValues([PRODUCTS_HEADERS]);
+    sheet.getRange(PRODUCTS_HEADER_ROW, 1, 1, PRODUCTS_COLUMN_COUNT).setValues([PRODUCTS_HEADERS]);
     sheet.setFrozenRows(1);
   }
 
@@ -19,21 +22,29 @@ function getProductsSheet_() {
 
 function getProducts_() {
   const sheet = getProductsSheet_();
-  if (sheet.getLastRow() < 2) return [];
+  const lastRow = sheet.getLastRow();
+  if (lastRow < PRODUCTS_DATA_START_ROW) return [];
 
-  return sheet.getRange(2, 1, sheet.getLastRow() - 1, PRODUCTS_HEADERS.length)
+  // 一覧取得は必要列のみをまとめて取得します。
+  return sheet.getRange(PRODUCTS_DATA_START_ROW, 1, lastRow - PRODUCTS_HEADER_ROW, PRODUCTS_COLUMN_COUNT)
     .getValues()
     .map(rowToProduct_)
     .filter(product => product.id);
 }
 
-function findProductRow_(id) {
-  const sheet = getProductsSheet_();
-  if (sheet.getLastRow() < 2) return -1;
+function findProductRow_(sheet, id, lastRow) {
+  if (lastRow < PRODUCTS_DATA_START_ROW) return -1;
 
-  const ids = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues().flat();
-  const index = ids.indexOf(id);
-  return index === -1 ? -1 : index + 2;
+  // 更新・削除はID列のみを対象にして最小範囲で探索します。
+  const idRange = sheet.getRange(PRODUCTS_DATA_START_ROW, 1, lastRow - PRODUCTS_HEADER_ROW, 1);
+  const finder = idRange.createTextFinder(String(id)).matchEntireCell(true);
+  const found = finder.findNext();
+  return found ? found.getRow() : -1;
+}
+
+function appendProductRow_(sheet, values) {
+  const row = sheet.getLastRow() + 1;
+  sheet.getRange(row, 1, 1, PRODUCTS_COLUMN_COUNT).setValues([values]);
 }
 
 function productToRow_(product, id, createdAt, updatedAt) {
