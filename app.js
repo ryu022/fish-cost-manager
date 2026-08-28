@@ -23,6 +23,9 @@
     toastMessage: document.getElementById('toastMessage'),
     installButton: document.getElementById('installButton'),
     refreshListButton: document.getElementById('refreshListButton'),
+    selectAllButton: document.getElementById('selectAllButton'),
+    deleteSelectedButton: document.getElementById('deleteSelectedButton'),
+    deleteAllButton: document.getElementById('deleteAllButton'),
     submitButton: document.getElementById('submitButton'),
     formHeading: document.getElementById('formHeading'),
     inputs: {
@@ -63,12 +66,33 @@
   let committedProductsCache = [];
   let productsById = new Map();
   let sortedProductIds = [];
-  let tokenIndexByKeyword = new Map();
   let toastTimer = null;
   let eventsBound = false;
   let deferredInstallPrompt = null;
   let submitPending = false;
   const deletePendingIds = new Set();
+  const selectedProductIds = new Set();
+  const perfMetrics = global.__perfMetrics || (global.__perfMetrics = []);
+
+  function todayValue() {
+    const now = new Date();
+    const timezoneOffset = now.getTimezoneOffset() * 60 * 1000;
+    return new Date(now.getTime() - timezoneOffset).toISOString().slice(0, 10);
+  }
+
+  function startPerfTimer(label, scope, stage) {
+    const startedAt = performance.now();
+    let ended = false;
+    console.time(label);
+    return () => {
+      if (ended) return 0;
+      ended = true;
+      const duration = performance.now() - startedAt;
+      console.timeEnd(label);
+      perfMetrics.push({ scope, stage, label, duration: Math.round(duration * 10) / 10 });
+      return duration;
+    };
+  }
 
   // 規格表記の揺れを内部表現へ統一します。
   function normalizeStandard(standard) {
@@ -205,6 +229,9 @@
   }
 
   async function showTab(tabName) {
+    if (tabName === 'register' && !editingId) {
+      setFormData({ ...database.getDraft(), arrivalDate: todayValue() });
+    }
     elements.tabs.forEach((tab) => tab.classList.toggle('is-active', tab.dataset.tab === tabName));
     elements.panels.forEach((panel) => panel.classList.toggle('is-active', panel.dataset.panel === tabName));
     if (tabName === 'print') global.PrintManager.renderPrintPreview(productsCache);
@@ -235,42 +262,9 @@
     return products.map((product) => ({ ...product }));
   }
 
-  function productSearchText(product) {
-    return [
-      product.origin || '',
-      product.productName || '',
-      product.comment || '',
-      product.arrivalDate || '',
-      standardLabel(product.standard || ''),
-      String(product.id || ''),
-    ].join(' ').toLowerCase();
-  }
-
-  function tokenizeSearchText(text) {
-    return text
-      .replace(/[^A-Za-z0-9\u3040-\u30FF\u4E00-\u9FFF]+/g, ' ')
-      .trim()
-      .toLowerCase()
-      .split(/\s+/)
-      .filter(Boolean);
-  }
-
-  function rebuildTokenIndex() {
-    tokenIndexByKeyword = new Map();
-    productsById.forEach((product, id) => {
-      const tokens = tokenizeSearchText(productSearchText(product));
-      tokens.forEach((token) => {
-        const ids = tokenIndexByKeyword.get(token) || new Set();
-        ids.add(id);
-        tokenIndexByKeyword.set(token, ids);
-      });
-    });
-  }
-
   function rebuildDerivedCachesFromMap() {
     productsCache = sortProducts(Array.from(productsById.values()));
     sortedProductIds = productsCache.map((product) => String(product.id));
-    rebuildTokenIndex();
   }
 
   function setProductsCache(products, { commit = false } = {}) {
@@ -312,10 +306,12 @@
 
   function productValues(product) {
     const standard = normalizeStandard(product.standard);
-    const caseCost = standard === 'tailP'
-      ? ''
-      : calc.formatCurrency(product.caseCost);
     const oneFishCost = formatCurrencyOrBlank(parseCurrencyValue(product.oneFishCost));
+    const expenseCost = parseCurrencyValue(product.expenseCost);
+    const kgCount = parseCurrencyValue(product.kgCount);
+    const expenseKgCost = standard === 'kg' && expenseCost !== null && kgCount !== null && kgCount > 0
+      ? calc.formatCurrency(expenseCost / kgCount)
+      : '—';
 
     return {
       priority: getPriority(product.priority),
@@ -323,8 +319,8 @@
       origin: product.origin || '—',
       productName: product.productName || '—',
       standard: product.standard ? standardLabel(product.standard) : '—',
-      caseCost,
-      expenseCost: calc.formatCurrency(product.expenseCost),
+      priceLabel: standard === 'kg' ? '経費込みKg原価' : (standard === 'c/s' ? '経費込みケース原価' : ''),
+      price: standard === 'kg' ? expenseKgCost : (standard === 'c/s' ? calc.formatCurrency(product.expenseCost) : ''),
       oneFishCost,
       comment: product.comment || '—',
     };
@@ -336,12 +332,15 @@
 
   function buildTableRow(product) {
     const value = productValues(product);
-    return `<tr data-id="${product.id}"><td><span class="priority-chip ${value.priority.className}">${value.priority.mark}</span></td><td>${escapeHtml(value.date)}</td><td>${escapeHtml(value.origin)}</td><td>${escapeHtml(value.productName)}</td><td>${escapeHtml(value.standard)}</td><td>${escapeHtml(value.caseCost)}</td><td>${escapeHtml(value.expenseCost)}</td><td>${escapeHtml(value.oneFishCost)}</td><td>${escapeHtml(value.comment)}</td><td>${actionButtons(product.id)}</td></tr>`;
+    const checked = selectedProductIds.has(String(product.id)) ? ' checked' : '';
+    return `<tr data-id="${product.id}"><td><input class="record-select" type="checkbox" data-select-id="${product.id}" aria-label="${escapeHtml(value.productName)}を選択"${checked} /></td><td><span class="priority-chip ${value.priority.className}">${value.priority.mark}</span></td><td>${escapeHtml(value.date)}</td><td>${escapeHtml(value.origin)}</td><td>${escapeHtml(value.productName)}</td><td>${escapeHtml(value.standard)}</td><td>${escapeHtml(value.price)}</td><td>${escapeHtml(value.oneFishCost)}</td><td>${escapeHtml(value.comment)}</td><td>${actionButtons(product.id)}</td></tr>`;
   }
 
   function buildCard(product) {
     const value = productValues(product);
-    return `<article class="record-card" data-id="${product.id}"><div class="record-card__heading"><span class="priority-chip ${value.priority.className}">${value.priority.mark} ${value.priority.name}</span><span class="record-date">入荷日 ${escapeHtml(value.date)}</span></div><div class="record-line"><div class="record-item"><span class="label">産地</span><strong>${escapeHtml(value.origin)}</strong></div><div class="record-item"><span class="label">品名</span><strong>${escapeHtml(value.productName)}</strong></div><div class="record-item"><span class="label">規格</span><strong>${escapeHtml(value.standard)}</strong></div><div class="record-item"><span class="label">ケース原価</span><strong>${escapeHtml(value.caseCost)}</strong></div><div class="record-item"><span class="label">経費込み原価</span><strong>${escapeHtml(value.expenseCost)}</strong></div><div class="record-item"><span class="label">1尾（P）</span><strong>${escapeHtml(value.oneFishCost)}</strong></div></div><p class="comment-box"><span class="label">コメント</span>${escapeHtml(value.comment)}</p>${actionButtons(product.id)}</article>`;
+    const checked = selectedProductIds.has(String(product.id)) ? ' checked' : '';
+    const priceField = value.priceLabel ? `<div><span>${escapeHtml(value.priceLabel)}</span><strong>${escapeHtml(value.price)}</strong></div>` : '';
+    return `<article class="record-card" data-id="${product.id}" tabindex="0"><div class="record-card__heading"><label class="record-check"><input class="record-select" type="checkbox" data-select-id="${product.id}" aria-label="${escapeHtml(value.productName)}を選択"${checked} /><span>選択</span></label><span class="record-date">入荷日 ${escapeHtml(value.date)}</span></div><div class="record-card__title"><span class="priority-chip ${value.priority.className}">${value.priority.mark}</span><strong>${escapeHtml(value.productName)}</strong></div><p class="record-card__detail">${escapeHtml(value.origin)}　${escapeHtml(value.standard)}</p><div class="record-costs">${priceField}<div><span>1尾原価</span><strong>${escapeHtml(value.oneFishCost)}</strong></div></div><p class="comment-box"><span class="label">コメント</span>${escapeHtml(value.comment)}</p>${actionButtons(product.id)}</article>`;
   }
 
   function resetListViewReferences() {
@@ -352,7 +351,7 @@
 
   function ensureListStructure() {
     if (listView.tableBody && listView.cardsContainer) return;
-    elements.listContainer.innerHTML = '<div class="list-table-wrap"><table class="list-table"><thead><tr><th>優先</th><th>入荷日</th><th>産地</th><th>品名</th><th>規格</th><th>ケース原価</th><th>経費込み原価</th><th>1尾（P）</th><th>コメント</th><th>操作</th></tr></thead><tbody data-list-body></tbody></table></div><div class="list-cards" data-list-cards></div>';
+    elements.listContainer.innerHTML = '<div class="list-table-wrap"><table class="list-table"><thead><tr><th>選択</th><th>優先</th><th>入荷日</th><th>産地</th><th>品名</th><th>規格</th><th>経費込み原価</th><th>1尾原価</th><th>コメント</th><th>操作</th></tr></thead><tbody data-list-body></tbody></table></div><div class="list-cards" data-list-cards></div>';
     listView.tableWrap = elements.listContainer.querySelector('.list-table-wrap');
     listView.tableBody = elements.listContainer.querySelector('[data-list-body]');
     listView.cardsContainer = elements.listContainer.querySelector('[data-list-cards]');
@@ -376,38 +375,25 @@
     return sortedProductIds[currentIndex + 1];
   }
 
-  // 将来の検索高速化向けに、Mapとトークン索引で候補IDを取得できるようにします。
-  function searchProductIds(query) {
-    const tokens = tokenizeSearchText(query || '');
-    if (!tokens.length) return sortedProductIds.slice();
-    let candidateIds = null;
-    tokens.forEach((token) => {
-      const ids = tokenIndexByKeyword.get(token) || new Set();
-      candidateIds = candidateIds === null
-        ? new Set(ids)
-        : new Set(Array.from(candidateIds).filter((id) => ids.has(id)));
-    });
-    if (!candidateIds) return [];
-    return sortedProductIds.filter((id) => candidateIds.has(id));
-  }
-
   // 一覧パネルの枠は維持し、行データだけ差し替えて再描画コストを下げます。
   function renderList() {
-    console.time('描画:一覧全体');
-    const sortedProducts = searchProductIds('')
-      .map((id) => productsById.get(id))
-      .filter(Boolean);
+    const endRenderTimer = startPerfTimer('renderList', 'render', 'renderList');
+    const sortedProducts = productsCache;
 
     if (!sortedProducts.length) {
+      const endDomTimer = startPerfTimer('DOM更新:空表示', 'render', 'dom');
       elements.listContainer.innerHTML = '<div class="empty-card"><h3>まだ登録データがありません</h3><p>新規登録から入荷情報を登録してください。</p></div>';
       listView.isEmpty = true;
       resetListViewReferences();
-      console.timeEnd('描画:一覧全体');
+      updateSelectionControls();
+      endDomTimer();
+      endRenderTimer();
       return;
     }
 
     ensureListStructure();
 
+    const endDomTimer = startPerfTimer('DOM更新', 'render', 'dom');
     const rowFragment = document.createDocumentFragment();
     const cardFragment = document.createDocumentFragment();
     sortedProducts.forEach((product) => {
@@ -420,7 +406,9 @@
     listView.tableBody.appendChild(rowFragment);
     listView.cardsContainer.appendChild(cardFragment);
     listView.isEmpty = false;
-    console.timeEnd('描画:一覧全体');
+    updateSelectionControls();
+    endDomTimer();
+    endRenderTimer();
   }
 
   function rerenderActiveListPreservingScroll() {
@@ -446,6 +434,19 @@
     rebuildDerivedCachesFromMap();
   }
 
+  function removeProductsFromCache(ids) {
+    ids.forEach((id) => productsById.delete(String(id)));
+    rebuildDerivedCachesFromMap();
+  }
+
+  function updateSelectionControls() {
+    const count = selectedProductIds.size;
+    elements.deleteSelectedButton.disabled = count === 0;
+    elements.deleteSelectedButton.textContent = count ? `選択削除（${count}件）` : '選択削除';
+    elements.deleteAllButton.disabled = sortedProductIds.length === 0;
+    elements.selectAllButton.textContent = sortedProductIds.length && sortedProductIds.every((id) => selectedProductIds.has(id)) ? '選択解除' : '全選択';
+  }
+
   function setRecordActionsDisabled(id, disabled) {
     if (!isListActive()) return;
     const targetId = String(id);
@@ -457,8 +458,7 @@
 
   // 新規追加時: ソート順の正しい位置に1行だけ挿入します。
   function appendProductToList(product) {
-    const timer = '描画:登録差分';
-    console.time(timer);
+    const endTimer = startPerfTimer('DOM更新:登録差分', 'render', 'domPatch');
     try {
       if (!isListActive()) return;
       if (listView.isEmpty || !listView.tableBody || !listView.cardsContainer) ensureListStructure();
@@ -473,15 +473,15 @@
       listView.tableBody.insertBefore(newTr, nextTr || null);
       listView.cardsContainer.insertBefore(newCard, nextCard || null);
       listView.isEmpty = false;
+      updateSelectionControls();
     } finally {
-      console.timeEnd(timer);
+      endTimer();
     }
   }
 
   // 削除時: 対象行だけ取り除き、空なら空表示へ切り替えます。
   function removeProductFromList(id) {
-    const timer = '描画:削除差分';
-    console.time(timer);
+    const endTimer = startPerfTimer('DOM更新:削除差分', 'render', 'domPatch');
     try {
       if (!isListActive()) return;
       if (!listView.tableBody || !listView.cardsContainer) return;
@@ -489,20 +489,21 @@
       const card = listView.cardsContainer.querySelector(`article[data-id="${id}"]`);
       if (tr) tr.remove();
       if (card) card.remove();
+      selectedProductIds.delete(String(id));
       if (!listView.tableBody.firstElementChild) {
         elements.listContainer.innerHTML = '<div class="empty-card"><h3>まだ登録データがありません</h3><p>新規登録から入荷情報を登録してください。</p></div>';
         listView.isEmpty = true;
         resetListViewReferences();
       }
+      updateSelectionControls();
     } finally {
-      console.timeEnd(timer);
+      endTimer();
     }
   }
 
   // 編集時: 対象行だけ置換し、必要時は行を移動して並び順だけ調整します。
   function updateProductInList(product) {
-    const timer = '描画:編集差分';
-    console.time(timer);
+    const endTimer = startPerfTimer('DOM更新:編集差分', 'render', 'domPatch');
     try {
       if (!isListActive()) return;
       if (listView.isEmpty || !listView.tableBody || !listView.cardsContainer) {
@@ -530,7 +531,7 @@
       listView.tableBody.insertBefore(newTr, nextTr || null);
       listView.cardsContainer.insertBefore(newCard, nextCard || null);
     } finally {
-      console.timeEnd(timer);
+      endTimer();
     }
   }
 
@@ -542,17 +543,15 @@
 
   // 全件取得は起動時・手動更新時のみ実行します。
   async function refreshProducts() {
-    let communicationTimerStarted = false;
+    let fetchTimerEnd = null;
     try {
-      console.time('通信:get');
-      communicationTimerStarted = true;
+      fetchTimerEnd = startPerfTimer('fetch開始:get', 'network', 'fetch');
       setProductsCache(await database.getProducts(), { commit: true });
-      console.timeEnd('通信:get');
-      communicationTimerStarted = false;
+      fetchTimerEnd();
       renderList();
       global.PrintManager.renderPrintPreview(productsCache);
     } catch (error) {
-      if (communicationTimerStarted) console.timeEnd('通信:get');
+      if (fetchTimerEnd) fetchTimerEnd();
       console.error(error);
       showListError(error.message);
       global.PrintManager.renderPrintError(error.message);
@@ -561,7 +560,7 @@
 
   function resetForm(clearDraft = true) {
     editingId = null;
-    setFormData(config.defaultForm);
+    setFormData({ ...config.defaultForm, arrivalDate: todayValue() });
     elements.submitButton.textContent = '登録';
     elements.formHeading.textContent = MESSAGES.registerHeading;
     elements.saveMessage.textContent = '入力途中は自動保存されます。';
@@ -576,7 +575,7 @@
       standard: currentFormData.standard,
       costType: currentFormData.costType,
       priority: currentFormData.priority,
-      arrivalDate: currentFormData.arrivalDate || config.defaultForm.arrivalDate,
+      arrivalDate: todayValue(),
       productName: '',
       cost: '',
       kgCount: '',
@@ -600,6 +599,7 @@
   }
 
   async function startEdit(id) {
+    const endTotalTimer = startPerfTimer('編集開始', 'edit', 'total');
     try {
       const product = productsById.get(String(id));
       if (!product) throw new Error('編集対象のデータが見つかりません。');
@@ -610,16 +610,20 @@
       await showTab('register');
     } catch (error) {
       showListError(error.message);
+    } finally {
+      endTotalTimer();
     }
   }
 
   async function removeProduct(id) {
     if (!window.confirm('削除しますか？')) return;
     if (deletePendingIds.has(String(id))) return;
+    const endTotalTimer = startPerfTimer('削除開始', 'delete', 'total');
 
     const target = productsById.get(String(id));
     if (!target) {
       showListError('削除対象のデータが見つかりません。');
+      endTotalTimer();
       return;
     }
 
@@ -631,23 +635,56 @@
     removeProductFromList(id);
     global.PrintManager.renderPrintPreview(productsCache);
 
-    let deleteTimerStarted = false;
+    let fetchTimerEnd = null;
     try {
-      console.time('削除:通信');
-      deleteTimerStarted = true;
+      fetchTimerEnd = startPerfTimer('削除:fetch開始', 'delete', 'fetch');
       await database.deleteProduct(id);
-      console.timeEnd('削除:通信');
-      deleteTimerStarted = false;
+      fetchTimerEnd();
       commitCurrentCache();
       showToast('削除しました');
     } catch (error) {
-      if (deleteTimerStarted) console.timeEnd('削除:通信');
+      if (fetchTimerEnd) fetchTimerEnd();
       rollbackToCommittedCache();
       elements.saveMessage.textContent = `削除に失敗しました。${error.message}`;
     } finally {
       deletePendingIds.delete(String(id));
       setRecordActionsDisabled(id, false);
+      endTotalTimer();
     }
+  }
+
+  async function removeProducts(ids, confirmationMessage) {
+    if (!ids.length) return;
+    if (!window.confirm(confirmationMessage)) return;
+
+    ids.forEach((id) => deletePendingIds.add(id));
+    removeProductsFromCache(ids);
+    ids.forEach((id) => removeProductFromList(id));
+    global.PrintManager.renderPrintPreview(productsCache);
+
+    try {
+      const deletedIds = await database.deleteProducts(ids);
+      if (deletedIds.length !== ids.length) throw new Error('一部の商品を削除できませんでした。');
+      ids.forEach((id) => selectedProductIds.delete(id));
+      commitCurrentCache();
+      updateSelectionControls();
+      showToast(`${ids.length}件を削除しました`);
+    } catch (error) {
+      rollbackToCommittedCache();
+      elements.saveMessage.textContent = `削除に失敗しました。${error.message}`;
+    } finally {
+      ids.forEach((id) => deletePendingIds.delete(id));
+    }
+  }
+
+  async function removeSelectedProducts() {
+    const ids = Array.from(selectedProductIds).filter((id) => productsById.has(id));
+    await removeProducts(ids, `選択した${ids.length}件の商品を削除しますか？`);
+  }
+
+  async function removeAllProducts() {
+    const ids = sortedProductIds.slice();
+    await removeProducts(ids, `現在一覧に表示されている${ids.length}件の商品を削除しますか？`);
   }
 
   async function copyLastProduct() {
@@ -665,6 +702,7 @@
         costType: lastProduct.costType,
         comment: lastProduct.comment,
         priority: lastProduct.priority,
+        arrivalDate: todayValue(),
       });
       editingId = null;
       elements.submitButton.textContent = '登録';
@@ -712,19 +750,19 @@
     event.preventDefault();
     if (submitPending) return;
 
-    const totalTimer = editingId ? '編集:合計' : '登録:合計';
-    console.time(totalTimer);
+    const isEditing = Boolean(editingId);
+    const scope = isEditing ? 'edit' : 'register';
+    const endTotalTimer = startPerfTimer(isEditing ? '編集開始' : '登録開始', scope, 'total');
 
     const formData = getFormData();
     const validationMessage = validateProduct(formData);
     if (validationMessage) {
       elements.saveMessage.textContent = validationMessage;
-      console.timeEnd(totalTimer);
+      endTotalTimer();
       return;
     }
 
     const product = { ...formData, ...calc.calculateCosts(formData) };
-    const isEditing = Boolean(editingId);
     const nowIso = new Date().toISOString();
     const optimisticId = isEditing ? String(editingId) : `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const previousEditingProduct = isEditing ? productsById.get(String(editingId)) : null;
@@ -738,9 +776,9 @@
 
     submitPending = true;
     elements.submitButton.disabled = true;
-    let communicationLabel = '';
-    let communicationTimerStarted = false;
+    let fetchTimerEnd = null;
 
+    const endDomTimer = startPerfTimer(isEditing ? '編集:DOM更新' : '登録:DOM更新', scope, 'dom');
     upsertProductCache(optimisticProduct);
     if (isEditing) {
       updateProductInList(optimisticProduct);
@@ -748,26 +786,21 @@
       appendProductToList(optimisticProduct);
     }
     global.PrintManager.renderPrintPreview(productsCache);
+    endDomTimer();
 
     try {
       if (isEditing) {
-        communicationLabel = '編集:通信';
-        console.time(communicationLabel);
-        communicationTimerStarted = true;
+        fetchTimerEnd = startPerfTimer('編集:fetch開始', scope, 'fetch');
         const savedProduct = await database.updateProduct(editingId, product);
-        console.timeEnd(communicationLabel);
-        communicationTimerStarted = false;
+        fetchTimerEnd();
         upsertProductCache(savedProduct);
         updateProductInList(savedProduct);
         commitCurrentCache();
         global.PrintManager.renderPrintPreview(productsCache);
       } else {
-        communicationLabel = '登録:通信';
-        console.time(communicationLabel);
-        communicationTimerStarted = true;
+        fetchTimerEnd = startPerfTimer('登録:fetch開始', scope, 'fetch');
         const savedProduct = await database.addProduct(product);
-        console.timeEnd(communicationLabel);
-        communicationTimerStarted = false;
+        fetchTimerEnd();
         removeProductFromCache(optimisticId);
         removeProductFromList(optimisticId);
         upsertProductCache(savedProduct);
@@ -786,7 +819,7 @@
         showToast('登録しました');
       }
     } catch (error) {
-      if (communicationTimerStarted) console.timeEnd(communicationLabel);
+      if (fetchTimerEnd) fetchTimerEnd();
       rollbackToCommittedCache();
       if (isEditing && previousEditingProduct) {
         editingId = previousEditingProduct.id;
@@ -795,7 +828,7 @@
     } finally {
       submitPending = false;
       elements.submitButton.disabled = false;
-      console.timeEnd(totalTimer);
+      endTotalTimer();
     }
   }
 
@@ -819,11 +852,38 @@
     elements.buttons.csvDownload.addEventListener('click', downloadCsv);
     elements.buttons.print.addEventListener('click', () => { void global.PrintManager.printCurrentProducts(); });
     elements.installButton?.addEventListener('click', handleInstallClick);
+    elements.selectAllButton?.addEventListener('click', () => {
+      const shouldSelect = !sortedProductIds.every((id) => selectedProductIds.has(id));
+      sortedProductIds.forEach((id) => {
+        if (shouldSelect) selectedProductIds.add(id);
+        else selectedProductIds.delete(id);
+      });
+      elements.listContainer.querySelectorAll('[data-select-id]').forEach((input) => {
+        input.checked = selectedProductIds.has(input.dataset.selectId);
+      });
+      updateSelectionControls();
+    });
+    elements.deleteSelectedButton?.addEventListener('click', () => { void removeSelectedProducts(); });
+    elements.deleteAllButton?.addEventListener('click', () => { void removeAllProducts(); });
     elements.listContainer.addEventListener('click', (event) => {
+      if (event.target.closest('.record-check, .record-select')) return;
       const button = event.target.closest('[data-action]');
-      if (!button) return;
-      if (button.dataset.action === 'edit') void startEdit(button.dataset.id);
-      if (button.dataset.action === 'delete') void removeProduct(button.dataset.id);
+      if (button) {
+        if (button.dataset.action === 'edit') void startEdit(button.dataset.id);
+        if (button.dataset.action === 'delete') void removeProduct(button.dataset.id);
+        return;
+      }
+      const card = event.target.closest('.record-card');
+      if (card) void startEdit(card.dataset.id);
+    });
+    elements.listContainer.addEventListener('change', (event) => {
+      const checkbox = event.target.closest('[data-select-id]');
+      if (!checkbox) return;
+      const id = checkbox.dataset.selectId;
+      if (checkbox.checked) selectedProductIds.add(id);
+      else selectedProductIds.delete(id);
+      elements.listContainer.querySelectorAll(`[data-select-id="${id}"]`).forEach((input) => { input.checked = checkbox.checked; });
+      updateSelectionControls();
     });
   }
 

@@ -1,6 +1,8 @@
 (function (global) {
   const APP_CONFIG = global.APP_CONFIG;
   let requestSequence = 0;
+  const perfMetrics = global.__perfMetrics || (global.__perfMetrics = []);
+  const serverMetrics = global.__serverPerfMetrics || (global.__serverPerfMetrics = []);
 
   function cloneDefaultDraft() {
     return { ...APP_CONFIG.defaultForm };
@@ -44,7 +46,8 @@
   }
 
   async function request(action, payload) {
-    const timerLabel = `通信:${action}:${++requestSequence}`;
+    const timerLabel = `${action}:fetch開始:${++requestSequence}`;
+    const startedAt = performance.now();
     console.time(timerLabel);
     const apiUrl = getApiUrl();
     const options = action === 'get'
@@ -60,10 +63,14 @@
       if (!response.ok) throw new Error(`通信に失敗しました（${response.status}）。`);
 
       const result = await response.json();
+      if (Array.isArray(result.timings) && result.timings.length) {
+        serverMetrics.push(...result.timings.map((item) => ({ action, ...item })));
+      }
       if (!result.success) throw new Error(result.message || 'データの処理に失敗しました。');
       return result.data;
     } finally {
       console.timeEnd(timerLabel);
+      perfMetrics.push({ scope: 'network', stage: 'fetch', action, label: timerLabel, duration: Math.round((performance.now() - startedAt) * 10) / 10 });
     }
   }
 
@@ -82,6 +89,11 @@
 
   async function deleteProduct(id) {
     await request('delete', { id });
+  }
+
+  async function deleteProducts(ids) {
+    const deletedIds = await request('deleteMultiple', { ids: Array.from(ids, String) });
+    return Array.isArray(deletedIds) ? deletedIds.map(String) : [];
   }
 
   // 下書きだけは、各端末で入力を復元するためにlocalStorageへ保存します。
@@ -103,5 +115,5 @@
     localStorage.removeItem(APP_CONFIG.storageKeys.draft);
   }
 
-  global.Database = { getProducts, addProduct, updateProduct, deleteProduct, getDraft, saveDraft, clearDraft };
+  global.Database = { getProducts, addProduct, updateProduct, deleteProduct, deleteProducts, getDraft, saveDraft, clearDraft };
 })(window);

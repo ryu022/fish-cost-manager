@@ -162,6 +162,19 @@ button, input, select, textarea { font: inherit; }
 .list-header { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 18px; }
 .list-header h2 { margin: 0; }
 .list-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.list-refresh { display: flex; justify-content: flex-end; margin-bottom: 18px; }
+.list-refresh .secondary-button { min-width: 120px; }
+.record-select { width: 21px; height: 21px; accent-color: var(--primary); cursor: pointer; }
+.record-check { display: inline-flex; min-height: 34px; align-items: center; gap: 7px; color: var(--muted); font-size: 0.86rem; font-weight: 700; cursor: pointer; }
+.record-card__title { display: flex; align-items: center; gap: 9px; font-size: 1.12rem; }
+.record-card__detail { margin: 7px 0 13px; color: var(--muted); font-weight: 700; }
+.record-costs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.record-costs > div { min-width: 0; padding: 10px; border: 1px solid #e3edff; border-radius: 10px; background: #f8fbff; }
+.record-costs span { display: block; color: #30507b; font-size: 0.78rem; font-weight: 700; }
+.record-costs strong { display: block; margin-top: 5px; overflow-wrap: anywhere; }
+.more-menu h2 { margin-top: 0; }
+.more-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.more-actions .secondary-button { min-height: 58px; }
 
 .print-preview { padding: 14px; border: 1px solid var(--line); border-radius: 18px; overflow-x: auto; }
 .print-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-bottom: 14px; margin-bottom: 14px; border-bottom: 1px solid #dce7fb; }
@@ -179,6 +192,7 @@ button, input, select, textarea { font: inherit; }
     position: fixed; z-index: 10; right: 0; bottom: 0; left: 0; gap: 0; padding: 8px;
     border-top: 1px solid var(--line); background: rgba(255, 255, 255, 0.96); box-shadow: 0 -6px 18px rgba(37, 99, 235, 0.09);
   }
+  .topbar { padding-bottom: 0; border: 0; box-shadow: none; background: transparent; }
   .tab { min-height: 50px; border: 0; border-radius: 10px; padding: 6px; font-size: 0.8rem; }
   .form-layout, .form-grid { grid-template-columns: 1fr; }
   .field.full { grid-column: auto; }
@@ -193,7 +207,14 @@ button, input, select, textarea { font: inherit; }
   .home-action span { display: inline; margin: 0 8px 0 0; font-size: 1.25rem; }
   .list-header { align-items: stretch; flex-direction: column; }
   .list-actions { display: grid; grid-template-columns: 1fr 1fr; }
-  .list-actions .secondary-button { width: 100%; }
+  .list-actions .secondary-button, .list-actions .danger-button { width: 100%; }
+  .list-refresh .secondary-button { width: 100%; }
+  .record-card { padding: 15px; border-radius: 12px; }
+  .record-card__heading { margin-bottom: 8px; }
+  .record-card > .record-actions { margin-top: 12px; }
+  .record-card > .record-actions .edit-button { display: none; }
+  .record-card > .record-actions .delete-button { flex: 0 0 auto; width: 100%; }
+  .more-actions { grid-template-columns: 1fr; }
   .print-header { align-items: flex-start; flex-direction: column; }
 }
 

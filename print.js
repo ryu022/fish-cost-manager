@@ -47,7 +47,14 @@
   function buildPrintRows(records) {
     return sortRecords(records).map((record) => {
       const standard = normalizeStandard(record.standard);
-      const caseCost = standard === 'tailP' ? '' : formatCurrency(record.caseCost);
+      const expenseCost = parseCurrencyValue(record.expenseCost);
+      const kgCount = parseCurrencyValue(record.kgCount);
+      const expenseKgCost = standard === 'kg' && expenseCost !== null && kgCount !== null && kgCount > 0
+        ? formatCurrency(expenseCost / kgCount)
+        : '';
+      const displayedExpenseCost = standard === 'kg'
+        ? expenseKgCost
+        : (standard === 'c/s' ? formatCurrencyOrBlank(expenseCost) : '');
       const oneFishCost = formatCurrencyOrBlank(parseCurrencyValue(record.oneFishCost));
 
       return `
@@ -57,8 +64,7 @@
         <td>${record.origin || '—'}</td>
         <td>${record.productName || '—'}</td>
         <td>${standardLabel(record.standard)}</td>
-        <td>${caseCost}</td>
-        <td>${formatCurrency(record.expenseCost)}</td>
+        <td>${displayedExpenseCost}</td>
         <td>${oneFishCost}</td>
         <td>${record.comment || '—'}</td>
       </tr>
@@ -76,12 +82,15 @@
     cachedRecords = records;
     if (!printContainer) return;
 
+    const startedAt = performance.now();
     const signature = recordsSignature(records);
     if (cachedRowsSignature !== signature) {
-      console.time('描画:印刷HTML');
+      console.time('印刷:HTML生成');
       cachedRowsHtml = buildPrintRows(records);
       cachedRowsSignature = signature;
-      console.timeEnd('描画:印刷HTML');
+      console.timeEnd('印刷:HTML生成');
+      global.__perfMetrics = global.__perfMetrics || [];
+      global.__perfMetrics.push({ scope: 'print', stage: 'html', label: '印刷:HTML生成', duration: Math.round((performance.now() - startedAt) * 10) / 10 });
     }
 
     const rows = cachedRowsHtml;
@@ -102,12 +111,11 @@
             <col style="width: 8%;">
             <col style="width: 14%;">
             <col style="width: 14%;">
-            <col style="width: 14%;">
             <col style="width: 22%;">
           </colgroup>
           <thead>
             <tr class="print-title-row">
-              <th colspan="9">
+              <th colspan="8">
                 <div class="print-title-grid">
                   <span class="print-title-text">鮮魚原価・入荷管理一覧</span>
                   <span class="print-title-date">印刷日: ${printDate}</span>
@@ -121,17 +129,18 @@
               <th>産地</th>
               <th>品名</th>
               <th>規格</th>
-              <th>ケース原価</th>
               <th>経費込原価</th>
               <th>1尾（P）</th>
               <th>コメント</th>
             </tr>
           </thead>
-          <tbody>${rows || '<tr><td colspan="9">印刷対象のデータがありません。</td></tr>'}</tbody>
+          <tbody>${rows || '<tr><td colspan="8">印刷対象のデータがありません。</td></tr>'}</tbody>
         </table>
         <footer class="print-footer">印刷日時: ${new Date().toLocaleString('ja-JP')} <span>｜</span> ページ <span class="page-number"></span></footer>
       </div>
     `;
+    global.__perfMetrics = global.__perfMetrics || [];
+    global.__perfMetrics.push({ scope: 'print', stage: 'preview', label: '印刷:プレビュー描画', duration: Math.round((performance.now() - startedAt) * 10) / 10 });
   }
 
   function renderPrintError(message) {
@@ -142,8 +151,13 @@
 
   // 印刷はキャッシュ済みデータを使い、DBへの再取得を行いません。
   function printCurrentProducts() {
+    const startedAt = performance.now();
+    console.time('印刷開始');
     if (!printContainer?.innerHTML) renderPrintPreview(cachedRecords);
     window.print();
+    console.timeEnd('印刷開始');
+    global.__perfMetrics = global.__perfMetrics || [];
+    global.__perfMetrics.push({ scope: 'print', stage: 'print', label: '印刷開始', duration: Math.round((performance.now() - startedAt) * 10) / 10 });
   }
 
   global.PrintManager = { renderPrintPreview, renderPrintError, printCurrentProducts };

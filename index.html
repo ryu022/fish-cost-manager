@@ -22,30 +22,15 @@
           </div>
         </div>
 
-        <nav class="tabs" aria-label="タブ切替">
-          <button type="button" class="tab is-active" data-tab="home">ホーム</button>
-          <button type="button" class="tab" data-tab="register">新規登録</button>
-          <button type="button" class="tab" data-tab="list">一覧</button>
+        <nav class="tabs" aria-label="画面切替">
+          <button type="button" class="tab is-active" data-tab="list">一覧</button>
+          <button type="button" class="tab" data-tab="register">＋登録</button>
           <button type="button" class="tab" data-tab="print">印刷</button>
+          <button type="button" class="tab" data-tab="more">その他</button>
         </nav>
       </header>
 
       <main class="panels">
-        <section class="panel is-active" data-panel="home">
-          <div class="home-card card">
-            <h2>鮮魚原価・入荷管理</h2>
-            <p>利用する機能を選択してください。</p>
-            <div class="home-actions">
-              <button type="button" class="home-action" data-tab="register"><span>＋</span>新規登録</button>
-              <button type="button" class="home-action" data-tab="list"><span>☷</span>一覧</button>
-              <button type="button" class="home-action" data-tab="print"><span>▣</span>印刷</button>
-            </div>
-            <div class="install-area">
-              <button type="button" class="secondary-button" id="installButton" hidden>ホーム画面に追加</button>
-            </div>
-          </div>
-        </section>
-
         <section class="panel" data-panel="register">
           <div class="card">
             <div class="form-layout">
@@ -160,16 +145,30 @@
           </div>
         </section>
 
-        <section class="panel" data-panel="list">
+        <section class="panel is-active" data-panel="list">
           <div class="card">
+            <div class="list-refresh">
+              <button type="button" class="secondary-button" id="refreshListButton">更新</button>
+            </div>
             <div class="list-header">
-              <h2>登録一覧</h2>
+              <h2>商品一覧</h2>
               <div class="list-actions">
-                <button type="button" class="secondary-button" id="refreshListButton">更新</button>
-                <button type="button" class="secondary-button" id="csvDownloadButton">CSVダウンロード</button>
+                <button type="button" class="secondary-button" id="selectAllButton">全選択</button>
+                <button type="button" class="danger-button" id="deleteSelectedButton" disabled>選択削除</button>
+                <button type="button" class="danger-button" id="deleteAllButton" disabled>全件削除</button>
               </div>
             </div>
             <div id="recordList" class="list-grid"></div>
+          </div>
+        </section>
+
+        <section class="panel" data-panel="more">
+          <div class="card more-menu">
+            <h2>その他</h2>
+            <div class="more-actions">
+              <button type="button" class="secondary-button" id="csvDownloadButton">CSVダウンロード</button>
+              <button type="button" class="secondary-button" id="installButton" hidden>ホーム画面に追加</button>
+            </div>
           </div>
         </section>
 
