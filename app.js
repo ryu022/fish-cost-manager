@@ -640,7 +640,8 @@
       fetchTimerEnd = startPerfTimer('削除:fetch開始', 'delete', 'fetch');
       await database.deleteProduct(id);
       fetchTimerEnd();
-      commitCurrentCache();
+      selectedProductIds.clear();
+      await refreshProducts();
       showToast('削除しました');
     } catch (error) {
       if (fetchTimerEnd) fetchTimerEnd();
@@ -654,7 +655,10 @@
   }
 
   async function removeProducts(ids, confirmationMessage) {
-    if (!ids.length) return;
+    if (!ids.length) {
+      showToast('削除する商品がありません');
+      return;
+    }
     if (!window.confirm(confirmationMessage)) return;
 
     ids.forEach((id) => deletePendingIds.add(id));
@@ -665,9 +669,8 @@
     try {
       const deletedIds = await database.deleteProducts(ids);
       if (deletedIds.length !== ids.length) throw new Error('一部の商品を削除できませんでした。');
-      ids.forEach((id) => selectedProductIds.delete(id));
-      commitCurrentCache();
-      updateSelectionControls();
+      selectedProductIds.clear();
+      await refreshProducts();
       showToast(`${ids.length}件を削除しました`);
     } catch (error) {
       rollbackToCommittedCache();

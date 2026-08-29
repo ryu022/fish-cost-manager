@@ -75,6 +75,19 @@ function findProductRow_(sheet, id, lastRow) {
   return -1;
 }
 
+function findProductRows_(sheet, ids, lastRow) {
+  if (lastRow < PRODUCTS_DATA_START_ROW) return ids.map((id) => ({ id, row: -1 }));
+
+  const targetIds = new Set(ids.map(String));
+  const idValues = sheet.getRange(PRODUCTS_DATA_START_ROW, 1, lastRow - PRODUCTS_DATA_START_ROW + 1, 1).getValues();
+  const rowsById = {};
+  idValues.forEach((value, index) => {
+    const id = String(value[0] || '');
+    if (targetIds.has(id)) rowsById[id] = PRODUCTS_DATA_START_ROW + index;
+  });
+  return ids.map((id) => ({ id, row: rowsById[id] || -1 }));
+}
+
 function appendProductRow_(sheet, values) {
   const row = sheet.getLastRow() + 1;
   sheet.getRange(row, 1, 1, PRODUCTS_COLUMN_COUNT).setValues([values]);

@@ -65,29 +65,30 @@ function doPost(event) {
     if (action === 'delete') {
       if (!product.id) return jsonResponse_(false, null, 'IDが指定されていません。');
       const searchStartedAt = Date.now();
-      const row = findProductRow_(sheet, product.id, lastRow);
+      const rows = findProductRows_(sheet, [String(product.id)], lastRow);
       Logger.log(`[${action}] データ検索 ${Date.now() - searchStartedAt}ms`);
-      if (row === -1) return jsonResponse_(false, null, '削除対象が見つかりません。');
+      if (rows[0].row === -1) return jsonResponse_(false, null, '削除対象が見つかりません。');
 
       const writeStartedAt = Date.now();
-      sheet.getRange(row, PRODUCTS_COLUMN_COUNT, 1, 1).setValues([[true]]);
-      deleteProductStateCache_(product.id, sheet);
+      sheet.deleteRow(rows[0].row);
+      invalidateProductsCache_();
       Logger.log(`[${action}] 書き込み ${Date.now() - writeStartedAt}ms`);
       return jsonResponse_(true, { id: product.id }, null, collectResponseTiming_(startedAt));
     }
 
     if (action === 'deleteMultiple') {
-      const ids = Array.isArray(product.ids) ? [...new Set(product.ids.map(String).filter(Boolean))] : [];
+      const requestedIds = Array.isArray(product.ids) ? product.ids : product.productIds;
+      const ids = Array.isArray(requestedIds) ? [...new Set(requestedIds.map(String).filter(Boolean))] : [];
       if (!ids.length) return jsonResponse_(false, null, '削除対象が指定されていません。');
 
       const searchStartedAt = Date.now();
-      const rows = ids.map((id) => ({ id, row: findProductRow_(sheet, id, lastRow) }));
+      const rows = findProductRows_(sheet, ids, lastRow);
       Logger.log(`[${action}] データ検索 ${Date.now() - searchStartedAt}ms`);
       if (rows.some((item) => item.row === -1)) return jsonResponse_(false, null, '削除対象が見つかりません。');
 
       const writeStartedAt = Date.now();
-      sheet.getRangeList(rows.map((item) => `${sheet.getRange(item.row, PRODUCTS_COLUMN_COUNT).getA1Notation()}`)).setValue(true);
-      deleteProductsStateCache_(ids, sheet);
+      rows.sort((a, b) => b.row - a.row).forEach((item) => sheet.deleteRow(item.row));
+      invalidateProductsCache_();
       Logger.log(`[${action}] 書き込み ${Date.now() - writeStartedAt}ms`);
       return jsonResponse_(true, ids, null, collectResponseTiming_(startedAt));
     }
