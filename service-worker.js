@@ -1,4 +1,4 @@
-const CACHE_NAME = 'fish-cost-manager-v6';
+const CACHE_NAME = 'fish-cost-manager-v7';
 const APP_SHELL_ASSETS = [
   './',
   './index.html',
